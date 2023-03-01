@@ -1,3 +1,104 @@
 {{define "bookmarks"}}
-Hello, {{.}}!
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bookmarks</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        justify-items: left;
+      }
+      label, button {
+        margin-top: 6px;
+      }
+      input, textarea {
+        width: 100%;
+        max-width: 600px;
+      }
+      button {
+        align-self: flex-start;
+      }
+      section {
+        margin: 1rem;
+      }
+      section.bookmarklist {
+        margin-top: 2rem;
+      }
+      dt {
+        font-weight: bold;
+        margin-top: 18px;
+      }
+      dd {
+        margin: 0 24px;
+      }
+      dd pre {
+        margin: 0;
+        font-size: 80%;
+      }
+      dd p {
+        margin: 0;
+      }
+      section.bookmarklist dd time {
+        font-family: monospace;
+      }
+      p.creationtime {
+        color: #777;
+      }
+    </style>
+  </head>
+  <body>
+    <section>
+      <h1>Add Bookmark</h1>
+      <form action="/bookmarks" method="POST">
+        <label for="url">URL</label>
+        <br />
+        <input type="url" name="url" id="url" required />
+        <br />
+
+        <label for="title">Title</label>
+        <br />
+        <input type="text" name="title" id="title" />
+        <br />
+
+        <label for="description">Description</label>
+        <br />
+        <textarea name="description" id="description"> </textarea>
+        <br />
+
+        <label for="tags">Tags</label>
+        <br />
+        <input type="text" name="tags" id="tags" />
+        <br />
+        <button type="submit">Add Bookmark</button>
+      </form>
+    </section>
+    <section class="bookmarklist">
+      <h1>Bookmarks</h1>
+      <dl>
+        {{range .}}
+        <dt>
+          <a href="{{.URL}}">{{if .Title}}{{.Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
+        </dt>
+        <dd>
+          <pre>{{.URL}}</pre>
+          {{if .Description}}
+          <blockquote>{{.Description}}</blockquote>
+          {{end}}
+          {{if .Tags}}
+          <p>Tags: <span class="tags">{{.Tags}}</span></p>
+          {{end}}
+          <p class="creationtime">Created: <time>{{.Created}}</time></p>
+        </dd>
+        {{end}}
+      </dl>
+    </section>
+  </body>
+</html>
 {{end}}

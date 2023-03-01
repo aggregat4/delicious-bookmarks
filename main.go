@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
@@ -91,7 +92,7 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 
 	const createUserTableSql string = `
   CREATE TABLE IF NOT EXISTS users (
-  id INTEGER NOT NULL PRIMARY KEY,
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL,
   password TEXT NOT NULL
   );`
@@ -103,13 +104,18 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 
 	const createBookmarksTableSql string = `
   CREATE TABLE IF NOT EXISTS bookmarks (
-  id INTEGER NOT NULL PRIMARY KEY,
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	user_id INTEGER NOT NULL,
   url TEXT NOT NULL,
   title TEXT,
   description TEXT,
   tags TEXT,
-  created DATETIME NOT NULl
-  );`
+  created INTEGER NOT NULl,
+	FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+	
+	CREATE UNIQUE INDEX IF NOT EXISTS bookmarks_created_idx ON bookmarks(created);
+	`
 
 	_, err = db.Exec(createBookmarksTableSql)
 
@@ -175,7 +181,7 @@ func login(db *sql.DB, c echo.Context) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
 
-	stmt, err := db.Prepare("SELECT password FROM users WHERE username = ?")
+	stmt, err := db.Prepare("SELECT id, password FROM users WHERE username = ?")
 
 	if err != nil {
 		return err
@@ -193,7 +199,8 @@ func login(db *sql.DB, c echo.Context) error {
 
 	if rows.Next() {
 		var passwordHash string
-		err = rows.Scan(&passwordHash)
+		var userid int
+		err = rows.Scan(&userid, &passwordHash)
 
 		if err != nil {
 			return err
@@ -202,10 +209,11 @@ func login(db *sql.DB, c echo.Context) error {
 		if checkPasswordHash(password, passwordHash) {
 			// we have successfully logged in, create a session cookie and redirect to the bookmarks page
 			sess, err := session.Get("session", c)
-			if err == nil {
+			if err != nil {
 				log.Println("Error getting session: ", err)
 				return c.Redirect(http.StatusFound, "/login")
 			} else {
+				sess.Values["userid"] = userid
 				sess.Values["username"] = username
 				sess.Save(c.Request(), c.Response())
 				return c.Redirect(http.StatusFound, "/bookmarks")
@@ -220,32 +228,83 @@ func showLogin(c echo.Context) error {
 	return c.Render(http.StatusOK, "login", "")
 }
 
-func withValidSession(c echo.Context, delegate func(username string) error) error {
+func withValidSession(c echo.Context, delegate func(username string, userid int) error) error {
 	sess, err := session.Get("session", c)
 	if err != nil {
 		return c.Redirect(http.StatusFound, "/login")
 	} else {
 		sessionUsername := sess.Values["username"].(string)
-		if sessionUsername == "" {
+		sessionUserid := sess.Values["userid"].(int)
+		if sessionUsername == "" || sessionUserid == 0 {
 			log.Println("Found a session but no username")
 			return c.Redirect(http.StatusFound, "/login")
 		} else {
-			return delegate(sessionUsername)
+			return delegate(sessionUsername, sessionUserid)
 		}
 	}
 }
 
+type bookmark struct {
+	URL         string
+	Title       string
+	Description string
+	Tags        string
+	Created     time.Time
+}
+
 func showBookmarks(db *sql.DB, c echo.Context) error {
-	return withValidSession(c, func(username string) error {
-		// TODO: retrieve all bookmarks for user and render template
-		return c.Render(http.StatusOK, "bookmarks", "Foobar!")
+	return withValidSession(c, func(username string, userid int) error {
+		handleError := func(err error) error {
+			log.Println(err)
+			return c.Render(http.StatusInternalServerError, "bookmarks", nil)
+		}
+		stmt, err := db.Prepare("SELECT url, title, description, tags, created FROM bookmarks WHERE user_id = ? ORDER BY created DESC")
+		if err != nil {
+			return handleError(err)
+		}
+		defer stmt.Close()
+		rows, err := stmt.Query(userid)
+		if err != nil {
+			return handleError(err)
+		}
+		defer rows.Close()
+		bookmarks := []bookmark{}
+		for rows.Next() {
+			var url, title, description, tags string
+			var createdInt int64
+			err = rows.Scan(&url, &title, &description, &tags, &createdInt)
+			if err != nil {
+				return handleError(err)
+			}
+			bookmarks = append(bookmarks, bookmark{url, title, description, tags, time.Unix(createdInt, 0)})
+		}
+		return c.Render(http.StatusOK, "bookmarks", bookmarks)
 	})
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
-	return withValidSession(c, func(username string) error {
-		// TODO: validate input and add bookmark to database
-		return c.String(http.StatusOK, "added")
+	return withValidSession(c, func(username string, userid int) error {
+		handleError := func(err error) error {
+			log.Println(err)
+			return c.Redirect(http.StatusFound, "/bookmarks")
+		}
+		url := c.FormValue("url")
+		if url == "" {
+			handleError(errors.New("URL is required"))
+		}
+		title := c.FormValue("title")
+		description := c.FormValue("description")
+		tags := c.FormValue("tags")
+		stmt, err := db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, created) VALUES (?, ?, ?, ?, ?, ?)")
+		if err != nil {
+			handleError(err)
+		}
+		defer stmt.Close()
+		_, err = stmt.Exec(userid, url, title, description, tags, time.Now().Unix())
+		if err != nil {
+			handleError(err)
+		}
+		return c.Redirect(http.StatusFound, "/bookmarks")
 	})
 }
 
