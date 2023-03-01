@@ -164,7 +164,39 @@ func hashAndPrintPassword(passwordToHash string) error {
 }
 
 func login(db *sql.DB, c echo.Context) error {
-	panic("unimplemented")
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+
+	stmt, err := db.Prepare("SELECT password FROM users WHERE username = ?")
+
+	if err != nil {
+		return err
+	}
+
+	defer stmt.Close()
+
+	rows, err := stmt.Query(username)
+
+	if err != nil {
+		return err
+	}
+
+	defer rows.Close()
+
+	if rows.Next() {
+		var passwordHash string
+		err = rows.Scan(&passwordHash)
+
+		if err != nil {
+			return err
+		}
+
+		if checkPasswordHash(password, passwordHash) {
+			return c.Redirect(http.StatusFound, "/bookmarks")
+		}
+	}
+
+	return c.Redirect(http.StatusFound, "/login")
 }
 
 func showLogin(c echo.Context) error {
