@@ -200,7 +200,16 @@ func login(db *sql.DB, c echo.Context) error {
 		}
 
 		if checkPasswordHash(password, passwordHash) {
-			return c.Redirect(http.StatusFound, "/bookmarks")
+			// we have successfully logged in, create a session cookie and redirect to the bookmarks page
+			sess, err := session.Get("session", c)
+			if err == nil {
+				log.Println("Error getting session: ", err)
+				return c.Redirect(http.StatusFound, "/login")
+			} else {
+				sess.Values["username"] = username
+				sess.Save(c.Request(), c.Response())
+				return c.Redirect(http.StatusFound, "/bookmarks")
+			}
 		}
 	}
 
@@ -211,12 +220,33 @@ func showLogin(c echo.Context) error {
 	return c.Render(http.StatusOK, "login", "")
 }
 
+func withValidSession(c echo.Context, delegate func(username string) error) error {
+	sess, err := session.Get("session", c)
+	if err != nil {
+		return c.Redirect(http.StatusFound, "/login")
+	} else {
+		sessionUsername := sess.Values["username"].(string)
+		if sessionUsername == "" {
+			log.Println("Found a session but no username")
+			return c.Redirect(http.StatusFound, "/login")
+		} else {
+			return delegate(sessionUsername)
+		}
+	}
+}
+
 func showBookmarks(db *sql.DB, c echo.Context) error {
-	return c.Render(http.StatusOK, "bookmarks", "Foobar!")
+	return withValidSession(c, func(username string) error {
+		// TODO: retrieve all bookmarks for user and render template
+		return c.Render(http.StatusOK, "bookmarks", "Foobar!")
+	})
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
-	return c.String(http.StatusOK, "added")
+	return withValidSession(c, func(username string) error {
+		// TODO: validate input and add bookmark to database
+		return c.String(http.StatusOK, "added")
+	})
 }
 
 type Template struct {
