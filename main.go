@@ -8,7 +8,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/gorilla/sessions"
+	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/crypto/bcrypt"
@@ -55,6 +58,11 @@ func runServer() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	sessionCookieSecretKey := os.Getenv("BOOKMARKS_SESSION_COOKIE_SECRET_KEY")
+	if sessionCookieSecretKey == "" {
+		panic(errors.New("BOOKMARKS_SESSION_COOKIE_SECRET_KEY environment variable must be set"))
+	}
+	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
 
 	e.GET("/login", func(c echo.Context) error { return showLogin(c) })
 	e.POST("/login", func(c echo.Context) error { return login(db, c) })
