@@ -16,6 +16,7 @@ Note the usage of query parameters to prefill a bunch of fields.
 
 ## TODO
 
+- Refactor the code to just use a UUID for the session secret (generated at startup). There is no need to use a configured one :facepalm:
 - `addbookmark` should check whether the URL is already present and if it is, don't overwrite existing parameters but allow user to edit if needed, then UPSERT
 - delete bookmark in the bookmark list
 - import command line mode: takes a path to a bookmarks.html and imports all those entries into a user's bookmarks, adding to all existing ones (need to detect duplicates and ignore?)
