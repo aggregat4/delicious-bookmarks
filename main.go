@@ -69,6 +69,7 @@ func runServer() {
 	e.POST("/login", func(c echo.Context) error { return login(db, c) })
 	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c) })
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
+	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
@@ -233,8 +234,14 @@ func withValidSession(c echo.Context, delegate func(username string, userid int)
 	if err != nil {
 		return c.Redirect(http.StatusFound, "/login")
 	} else {
-		sessionUsername := sess.Values["username"].(string)
-		sessionUserid := sess.Values["userid"].(int)
+		usernameraw := sess.Values["username"]
+		useridraw := sess.Values["userid"]
+		if usernameraw == nil || useridraw == nil {
+			log.Println("Found a session but no username or userid")
+			return c.Redirect(http.StatusFound, "/login")
+		}
+		sessionUsername := usernameraw.(string)
+		sessionUserid := useridraw.(int)
 		if sessionUsername == "" || sessionUserid == 0 {
 			log.Println("Found a session but no username")
 			return c.Redirect(http.StatusFound, "/login")
@@ -279,6 +286,15 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			bookmarks = append(bookmarks, bookmark{url, title, description, tags, time.Unix(createdInt, 0)})
 		}
 		return c.Render(http.StatusOK, "bookmarks", bookmarks)
+	})
+}
+
+func showAddBookmark(db *sql.DB, c echo.Context) error {
+	return withValidSession(c, func(username string, userid int) error {
+		url := c.QueryParam("url")
+		title := c.QueryParam("title")
+		description := c.QueryParam("description")
+		return c.Render(http.StatusOK, "addbookmark", bookmark{URL: url, Title: title, Description: description})
 	})
 }
 

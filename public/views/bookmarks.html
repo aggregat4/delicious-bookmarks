@@ -9,27 +9,12 @@
     <style>
       body {
         font-family: sans-serif;
-      }
-      form {
-        display: flex;
-        flex-direction: column;
-        justify-items: left;
-      }
-      label, button {
-        margin-top: 6px;
-      }
-      input, textarea {
-        width: 100%;
-        max-width: 600px;
-      }
-      button {
-        align-self: flex-start;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 12px;
       }
       section {
         margin: 1rem;
-      }
-      section.bookmarklist {
-        margin-top: 2rem;
       }
       dt {
         font-weight: bold;
@@ -45,7 +30,7 @@
       dd p {
         margin: 0;
       }
-      section.bookmarklist dd time {
+      dd time {
         font-family: monospace;
       }
       p.creationtime {
@@ -54,32 +39,10 @@
     </style>
   </head>
   <body>
-    <section>
-      <h1>Add Bookmark</h1>
-      <form action="/bookmarks" method="POST">
-        <label for="url">URL</label>
-        <br />
-        <input type="url" name="url" id="url" required />
-        <br />
-
-        <label for="title">Title</label>
-        <br />
-        <input type="text" name="title" id="title" />
-        <br />
-
-        <label for="description">Description</label>
-        <br />
-        <textarea name="description" id="description"> </textarea>
-        <br />
-
-        <label for="tags">Tags</label>
-        <br />
-        <input type="text" name="tags" id="tags" />
-        <br />
-        <button type="submit">Add Bookmark</button>
-      </form>
-    </section>
-    <section class="bookmarklist">
+    <nav>
+      <a href="/addbookmark">Add Bookmark</a>
+    </nav>
+    <main>
       <h1>Bookmarks</h1>
       <dl>
         {{range .}}
@@ -98,7 +61,7 @@
         </dd>
         {{end}}
       </dl>
-    </section>
+    </main>
   </body>
 </html>
 {{end}}

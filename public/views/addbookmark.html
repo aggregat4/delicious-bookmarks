@@ -1,0 +1,69 @@
+{{define "addbookmark"}}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Add Bookmarks</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 12px;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        justify-items: left;
+      }
+      label, button {
+        margin-top: 6px;
+      }
+      input, textarea {
+        width: 100%;
+        max-width: 80ch;
+        font-family: sans-serif;
+      }
+      textarea {
+        height: 5rem;
+      }
+      button {
+        align-self: flex-start;
+        font-family: sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="/bookmarks">Bookmarks</a>
+    </nav>
+    <main>
+      <h1>Add Bookmark</h1>
+      <form action="/bookmarks" method="POST">
+        <label for="url">URL</label>
+        <br />
+        <input type="url" name="url" id="url" value="{{.URL}}" required />
+        <br />
+
+        <label for="title">Title</label>
+        <br />
+        <input type="text" name="title" id="title" value="{{.Title}}"/>
+        <br />
+
+        <label for="description">Description</label>
+        <br />
+        <textarea name="description" id="description">{{.Description}}</textarea>
+        <br />
+
+        <label for="tags">Tags</label>
+        <br />
+        <input type="text" name="tags" id="tags" {{if .URL}}autofocus{{end}} />
+        <br />
+        <button type="submit">Add Bookmark</button>
+      </form>
+    </main>
+  </body>
+</html>
+{{end}}
