@@ -15,7 +15,6 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"golang.org/x/crypto/bcrypt"
 
 	"html/template"
 
@@ -82,95 +81,8 @@ func initAndVerifyDb() (*sql.DB, error) {
 	return db, err
 }
 
-func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
-	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite")
-
-	if err != nil {
-		return err
-	}
-
-	defer db.Close()
-
-	const createUserTableSql string = `
-  CREATE TABLE IF NOT EXISTS users (
-  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-  username TEXT NOT NULL,
-  password TEXT NOT NULL
-  );`
-
-	_, err = db.Exec(createUserTableSql)
-	if err != nil {
-		return err
-	}
-
-	const createBookmarksTableSql string = `
-  CREATE TABLE IF NOT EXISTS bookmarks (
-  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	user_id INTEGER NOT NULL,
-  url TEXT NOT NULL,
-  title TEXT,
-  description TEXT,
-  tags TEXT,
-  created INTEGER NOT NULl,
-	FOREIGN KEY(user_id) REFERENCES users(id)
-  );
-	
-	CREATE UNIQUE INDEX IF NOT EXISTS bookmarks_created_idx ON bookmarks(created);
-	`
-
-	_, err = db.Exec(createBookmarksTableSql)
-
-	if err != nil {
-		return err
-	}
-
-	stmt, err := db.Prepare("SELECT password FROM users WHERE id = 1 AND username = ?")
-
-	if err != nil {
-		return err
-	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query(initdbUsername)
-
-	if err != nil {
-		return err
-	}
-
-	defer rows.Close()
-
-	if rows.Next() {
-		var password string
-		err = rows.Scan(&password)
-
-		if err != nil {
-			return err
-		}
-
-		if initdbPassword != password {
-			return errors.New("the database already has this account but with a different password")
-		}
-	} else {
-		stmt, err := db.Prepare("INSERT INTO users (username, password) VALUES (?, ?)")
-
-		if err != nil {
-			return err
-		}
-
-		defer stmt.Close()
-
-		_, err = stmt.Exec(initdbUsername, initdbPassword)
-
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func hashAndPrintPassword(passwordToHash string) error {
-	hash, err := hashPassword(passwordToHash)
+	hash, err := HashPassword(passwordToHash)
 	if err != nil {
 		return err
 	}
@@ -207,7 +119,7 @@ func login(db *sql.DB, c echo.Context) error {
 			return err
 		}
 
-		if checkPasswordHash(password, passwordHash) {
+		if CheckPasswordHash(password, passwordHash) {
 			// we have successfully logged in, create a session cookie and redirect to the bookmarks page
 			sess, err := session.Get("session", c)
 			if err != nil {
@@ -291,11 +203,51 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 
 func showAddBookmark(db *sql.DB, c echo.Context) error {
 	return withValidSession(c, func(username string, userid int) error {
+		handleError := func(err error) error {
+			log.Println(err)
+			return c.Render(http.StatusInternalServerError, "addbookmark", nil)
+		}
 		url := c.QueryParam("url")
 		title := c.QueryParam("title")
 		description := c.QueryParam("description")
+		if url != "" {
+			existingBookmark, err := findExistingBookmark(db, url, userid)
+			if err != nil {
+				return handleError(err)
+			}
+			if existingBookmark != (bookmark{}) {
+				return c.Render(http.StatusOK, "addbookmark", existingBookmark)
+			}
+		}
 		return c.Render(http.StatusOK, "addbookmark", bookmark{URL: url, Title: title, Description: description})
 	})
+}
+
+func findExistingBookmark(db *sql.DB, url string, userid int) (bookmark, error) {
+	handleError := func(err error) error {
+		log.Println(err)
+		return err
+	}
+	stmt, err := db.Prepare("SELECT url, title, description, tags, created FROM bookmarks WHERE user_id = ? AND url = ?")
+	if err != nil {
+		return bookmark{}, handleError(err)
+	}
+	defer stmt.Close()
+	rows, err := stmt.Query(userid, url)
+	if err != nil {
+		return bookmark{}, handleError(err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var dbUrl, dbTitle, dbDescription, dbTags string
+		var dbCreated uint64
+		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbCreated)
+		if err != nil {
+			return bookmark{}, handleError(err)
+		}
+		return bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Created: time.Unix(int64(dbCreated), 0)}, nil
+	}
+	return bookmark{}, nil
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
@@ -306,19 +258,23 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		}
 		url := c.FormValue("url")
 		if url == "" {
-			handleError(errors.New("URL is required"))
+			return handleError(errors.New("URL is required"))
 		}
 		title := c.FormValue("title")
 		description := c.FormValue("description")
 		tags := c.FormValue("tags")
-		stmt, err := db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, created) VALUES (?, ?, ?, ?, ?, ?)")
+		// we perform an upsert because the URL may already be stored and we just want to update the other fields
+		stmt, err := db.Prepare(`
+			INSERT INTO bookmarks (user_id, url, title, description, tags, created) 
+			VALUES (?, ?, ?, ?, ?, ?) 
+			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?`)
 		if err != nil {
-			handleError(err)
+			return handleError(err)
 		}
 		defer stmt.Close()
-		_, err = stmt.Exec(userid, url, title, description, tags, time.Now().Unix())
+		_, err = stmt.Exec(userid, url, title, description, tags, time.Now().Unix(), title, description, tags)
 		if err != nil {
-			handleError(err)
+			return handleError(err)
 		}
 		return c.Redirect(http.StatusFound, "/bookmarks")
 	})
@@ -330,14 +286,4 @@ type Template struct {
 
 func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
 	return t.templates.ExecuteTemplate(w, name, data)
-}
-
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
-}
-
-func checkPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
 }

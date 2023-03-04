@@ -59,7 +59,7 @@
 
         <label for="tags">Tags</label>
         <br />
-        <input type="text" name="tags" id="tags" {{if .URL}}autofocus{{end}} />
+        <input type="text" name="tags" id="tags" value="{{.Tags}}" {{if .URL}}autofocus{{end}} />
         <br />
         <button type="submit">Add Bookmark</button>
       </form>
