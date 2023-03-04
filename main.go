@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -60,7 +61,8 @@ func runServer() {
 	e.Use(middleware.Recover())
 	sessionCookieSecretKey := os.Getenv("BOOKMARKS_SESSION_COOKIE_SECRET_KEY")
 	if sessionCookieSecretKey == "" {
-		panic(errors.New("BOOKMARKS_SESSION_COOKIE_SECRET_KEY environment variable must be set"))
+		// generate a cookie secret key
+		sessionCookieSecretKey = uuid.New().String()
 	}
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
 
@@ -121,9 +123,10 @@ func login(db *sql.DB, c echo.Context) error {
 
 		if CheckPasswordHash(password, passwordHash) {
 			// we have successfully logged in, create a session cookie and redirect to the bookmarks page
-			sess, err := session.Get("session", c)
+			sess, err := session.Get("delicious-bookmarks-session", c)
 			if err != nil {
 				log.Println("Error getting session: ", err)
+				clearSessionCookie(c)
 				return c.Redirect(http.StatusFound, "/login")
 			} else {
 				sess.Values["userid"] = userid
@@ -137,13 +140,24 @@ func login(db *sql.DB, c echo.Context) error {
 	return c.Redirect(http.StatusFound, "/login")
 }
 
+func clearSessionCookie(c echo.Context) {
+	c.SetCookie(&http.Cookie{
+		Name:     "delicious-bookmarks-session",
+		Value:    "",
+		Path:     "/", // TODO: this path is not context path safe
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+	})
+}
+
 func showLogin(c echo.Context) error {
 	return c.Render(http.StatusOK, "login", "")
 }
 
 func withValidSession(c echo.Context, delegate func(username string, userid int) error) error {
-	sess, err := session.Get("session", c)
+	sess, err := session.Get("delicious-bookmarks-session", c)
 	if err != nil {
+		clearSessionCookie(c)
 		return c.Redirect(http.StatusFound, "/login")
 	} else {
 		usernameraw := sess.Values["username"]
