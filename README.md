@@ -2,7 +2,19 @@
 
 ## Launching
 
-There is only one prerequisite to launching the program. An environment variable must be present called `BOOKMARKS_SESSION_COOKIE_SECRET_KEY` that contains the secret key for encrypting the session cookie for the application.
+The program will generate a random session key, this means that after each restart user provided cookies are invalid and they need to login again. You can configure a secret key to use by setting the environment variable `BOOKMARKS_SESSION_COOKIE_SECRET_KEY`.
+
+The program expects a `bookmarks.sqlite` sqlite3 database with an appropriate schema to exist. You can initialise a database with the following command:
+
+```
+TODO
+```
+
+The password for the you provide must be `bcrypt` hashed and salted. You can call the program with the following parameters to create a hashed and salted string:
+
+```
+./gobookmarks -passwordtohash 'thisismysecretpassword'
+```
 
 ## Bookmarklet
 
