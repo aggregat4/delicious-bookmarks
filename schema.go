@@ -38,7 +38,7 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 	FOREIGN KEY(user_id) REFERENCES users(id)
   );
 	
-	CREATE UNIQUE INDEX IF NOT EXISTS bookmarks_created_idx ON bookmarks(created);
+	CREATE INDEX IF NOT EXISTS bookmarks_created_idx ON bookmarks(created);
 	`
 
 	_, err = db.Exec(createBookmarksTableSql)
