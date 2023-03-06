@@ -19,9 +19,15 @@
       dt {
         font-weight: bold;
         margin-top: 18px;
+        /* Since we have a huge list of bookmarks, this can help some browsers not render the elements until they are in the viewport. */
+        content-visibility: auto;
+        contain-intrinsic-size: auto 22px;
       }
       dd {
         margin: 0 24px;
+        /* Since we have a huge list of bookmarks, this can help some browsers not render the elements until they are in the viewport. */
+        content-visibility: auto;
+        contain-intrinsic-size: auto 120px;
       }
       dd pre {
         margin: 0;
