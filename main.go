@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,8 +29,15 @@ func main() {
 	flag.StringVar(&initdbPassword, "initdb-pass", "", "Initializes the database with a user with this password, contents must be bcrypt encoded")
 	var initdbUsername string
 	flag.StringVar(&initdbUsername, "initdb-username", "", "Initializes the database with a user with this username")
+
 	var passwordToHash string
 	flag.StringVar(&passwordToHash, "passwordtohash", "", "A password that should be hashed and salted and the output sent to stdout")
+
+	var importBookmarksHtmlFile string
+	flag.StringVar(&importBookmarksHtmlFile, "importFile", "", "A bookmarks.html file to import in the database")
+	var importBookmarksUsername string
+	flag.StringVar(&importBookmarksUsername, "importUsername", "", "The username to import the bookmarks for")
+
 	flag.Parse()
 
 	if passwordToHash != "" {
@@ -38,9 +47,105 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error initializing database: %s", err)
 		}
+	} else if importBookmarksHtmlFile != "" && importBookmarksUsername != "" {
+		err := importBookmarks(importBookmarksHtmlFile, importBookmarksUsername)
+		if err != nil {
+			log.Fatalf("Error importing bookmarks: %s", err)
+		}
 	} else {
 		runServer()
 	}
+}
+
+type PinboardBookmark []struct {
+	Href        string    `json:"href"`
+	Description string    `json:"description"`
+	Extended    string    `json:"extended"`
+	Meta        string    `json:"meta"`
+	Hash        string    `json:"hash"`
+	Time        time.Time `json:"time"`
+	Shared      string    `json:"shared"`
+	Toread      string    `json:"toread"`
+	Tags        string    `json:"tags"`
+}
+
+var HtmlTagRegex = regexp.MustCompile(`(?s)<[^>]*>(?s)`)
+
+// A go function to remove html tags from a string
+// https://stackoverflow.com/questions/1732348/regex-match-open-tags-except-xhtml-self-contained-tags/1732454#1732454
+func removeHtmlTags(s string) string {
+	return HtmlTagRegex.ReplaceAllString(s, "")
+}
+
+func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) error {
+	file, err := os.Open(importBookmarksJsonFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	var pinboardBookmarks = make(PinboardBookmark, 0)
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&pinboardBookmarks)
+	if err != nil {
+		return err
+	}
+	bookmarks := make([]Bookmark, 0)
+	for _, b := range pinboardBookmarks {
+		bookmark := Bookmark{
+			URL:         b.Href,
+			Title:       b.Description,
+			Description: removeHtmlTags(b.Extended),
+			Tags:        b.Tags,
+			Created:     b.Time,
+		}
+		bookmarks = append(bookmarks, bookmark)
+	}
+	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
+	// now import all the bookmarks in the database
+	db, err := initAndVerifyDb()
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	// get the user id
+	stmt, err := db.Prepare("SELECT id FROM users WHERE username = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	rows, err := stmt.Query(importBookmarksUsername)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return errors.New("user not found")
+	}
+	var userid int
+	err = rows.Scan(&userid)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	stmt.Close()
+	// now insert all the bookmarks
+	stmt, err = db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, created) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	count := 0
+	for _, b := range bookmarks {
+		_, err = stmt.Exec(userid, b.URL, b.Title, b.Description, b.Tags, b.Created.Unix())
+		if err != nil {
+			return err
+		}
+		count = count + 1
+		if count%25 == 0 {
+			log.Println("Imported", count, "bookmarks")
+		}
+	}
+	return nil
 }
 
 func runServer() {
@@ -65,6 +170,9 @@ func runServer() {
 		sessionCookieSecretKey = uuid.New().String()
 	}
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5,
+	}))
 
 	e.GET("/login", func(c echo.Context) error { return showLogin(c) })
 	e.POST("/login", func(c echo.Context) error { return login(db, c) })
@@ -177,7 +285,7 @@ func withValidSession(c echo.Context, delegate func(username string, userid int)
 	}
 }
 
-type bookmark struct {
+type Bookmark struct {
 	URL         string
 	Title       string
 	Description string
@@ -201,7 +309,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			return handleError(err)
 		}
 		defer rows.Close()
-		bookmarks := []bookmark{}
+		bookmarks := []Bookmark{}
 		for rows.Next() {
 			var url, title, description, tags string
 			var createdInt int64
@@ -209,7 +317,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			if err != nil {
 				return handleError(err)
 			}
-			bookmarks = append(bookmarks, bookmark{url, title, description, tags, time.Unix(createdInt, 0)})
+			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, time.Unix(createdInt, 0)})
 		}
 		return c.Render(http.StatusOK, "bookmarks", bookmarks)
 	})
@@ -229,27 +337,27 @@ func showAddBookmark(db *sql.DB, c echo.Context) error {
 			if err != nil {
 				return handleError(err)
 			}
-			if existingBookmark != (bookmark{}) {
+			if existingBookmark != (Bookmark{}) {
 				return c.Render(http.StatusOK, "addbookmark", existingBookmark)
 			}
 		}
-		return c.Render(http.StatusOK, "addbookmark", bookmark{URL: url, Title: title, Description: description})
+		return c.Render(http.StatusOK, "addbookmark", Bookmark{URL: url, Title: title, Description: description})
 	})
 }
 
-func findExistingBookmark(db *sql.DB, url string, userid int) (bookmark, error) {
+func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) {
 	handleError := func(err error) error {
 		log.Println(err)
 		return err
 	}
 	stmt, err := db.Prepare("SELECT url, title, description, tags, created FROM bookmarks WHERE user_id = ? AND url = ?")
 	if err != nil {
-		return bookmark{}, handleError(err)
+		return Bookmark{}, handleError(err)
 	}
 	defer stmt.Close()
 	rows, err := stmt.Query(userid, url)
 	if err != nil {
-		return bookmark{}, handleError(err)
+		return Bookmark{}, handleError(err)
 	}
 	defer rows.Close()
 	if rows.Next() {
@@ -257,11 +365,11 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (bookmark, error) 
 		var dbCreated uint64
 		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbCreated)
 		if err != nil {
-			return bookmark{}, handleError(err)
+			return Bookmark{}, handleError(err)
 		}
-		return bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Created: time.Unix(int64(dbCreated), 0)}, nil
+		return Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Created: time.Unix(int64(dbCreated), 0)}, nil
 	}
-	return bookmark{}, nil
+	return Bookmark{}, nil
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
