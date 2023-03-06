@@ -32,8 +32,6 @@
       }
       dd time {
         font-family: monospace;
-      }
-      p.creationtime {
         color: #777;
       }
     </style>
@@ -57,7 +55,7 @@
           {{if .Tags}}
           <p>Tags: <span class="tags">{{.Tags}}</span></p>
           {{end}}
-          <p class="creationtime">Created: <time>{{.Created}}</time></p>
+          <time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time></p>
         </dd>
         {{end}}
       </dl>
