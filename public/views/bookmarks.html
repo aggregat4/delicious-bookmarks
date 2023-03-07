@@ -6,6 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bookmarks</title>
+    <link rel="icon" href="data:,">
     <style>
       body {
         font-family: sans-serif;
@@ -29,10 +30,6 @@
         content-visibility: auto;
         contain-intrinsic-size: auto 120px;
       }
-      dd pre {
-        margin: 0;
-        font-size: 80%;
-      }
       dd p {
         margin: 0;
       }
@@ -54,7 +51,6 @@
           <a href="{{.URL}}">{{if .Title}}{{.Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
         </dt>
         <dd>
-          <pre>{{.URL}}</pre>
           {{if .Description}}
           <blockquote>{{.Description}}</blockquote>
           {{end}}
