@@ -42,8 +42,6 @@ The bookmarks collection page is reverse chronologically sorted and contains _al
 
 One requirement of the design was that the addbookmark page was easily invokable from a bookmarklet or a browser extension as a shortcut for adding new URLs.
 
-Depending on the command line parameters 
-
 ## TODO
 
 - if-modified-since caching
