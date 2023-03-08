@@ -26,8 +26,26 @@ javascript:void(window.open(`http://localhost:1323/addbookmark?description=${enc
 
 Note the usage of query parameters to prefill a bunch of fields.
 
+## Architecture
+
+This is a web application written in go, distributed as a statically linked binary. It stores its data in two tables in a sqlite 3 database: `users` and `bookmarks`.
+
+User authentication is form and password based. Passwords are stored salted and hashed using Bcrypt.
+
+After logging into the application a cookie is set that is symmetrically encrypted and which contains all the required session information (basically the userid).
+
+The web application is completely JavaScript free, not for ideological reasons but it doesn't need any at the moment.
+
+The application supports adding, editing and showing all bookmarks.
+
+The bookmarks collection page is reverse chronologically sorted and contains _all_ kown bookmarks on one page. This has the advantage of giving search for free (just find on the page) and it stops us from having to implement paging. The disadvantage is that the page can get big. The contents are sent gzip encoded and for browsers that support it, the bookmarks are rendered with `content-visibility` set to `auto` and a guesstimated constant intrinsic size. This means that browsers that support it will only render one viewport full of bookmarks at a time. Sadly Firefox does not yet support this feature.
+
+One requirement of the design was that the addbookmark page was easily invokable from a bookmarklet or a browser extension as a shortcut for adding new URLs.
+
+Depending on the command line parameters 
+
 ## TODO
 
+- if-modified-since caching
 - delete bookmark in the bookmark list
-- edit bookmark in the bookmark list  (inline editing form?) (low prio, but since I need a separate create bookmark page for the bookmarklet/extension this may also be the way (see for example when adding a bookmark that is already added, it becomes an edit))
-- add an updated timestamp and support if-modifieed-since caching
+- edit bookmark in the bookmark list (just open in the addbookmarks page is fine)
