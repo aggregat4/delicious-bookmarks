@@ -96,7 +96,9 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 			Title:       b.Description,
 			Description: removeHtmlTags(b.Extended),
 			Tags:        b.Tags,
+			Private:     b.Shared == "no",
 			Created:     b.Time,
+			Updated:     b.Time,
 		}
 		bookmarks = append(bookmarks, bookmark)
 	}
@@ -129,14 +131,18 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	rows.Close()
 	stmt.Close()
 	// now insert all the bookmarks
-	stmt, err = db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, created) VALUES (?, ?, ?, ?, ?, ?)")
+	stmt, err = db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	count := 0
 	for _, b := range bookmarks {
-		_, err = stmt.Exec(userid, b.URL, b.Title, b.Description, b.Tags, b.Created.Unix())
+		private := 0
+		if b.Private {
+			private = 1
+		}
+		_, err = stmt.Exec(userid, b.URL, b.Title, b.Description, b.Tags, private, b.Created.Unix(), b.Updated.Unix())
 		if err != nil {
 			return err
 		}
@@ -290,7 +296,9 @@ type Bookmark struct {
 	Title       string
 	Description string
 	Tags        string
+	Private     bool
 	Created     time.Time
+	Updated     time.Time
 }
 
 func showBookmarks(db *sql.DB, c echo.Context) error {
@@ -299,7 +307,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			log.Println(err)
 			return c.Render(http.StatusInternalServerError, "bookmarks", nil)
 		}
-		stmt, err := db.Prepare("SELECT url, title, description, tags, created FROM bookmarks WHERE user_id = ? ORDER BY created DESC")
+		stmt, err := db.Prepare("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? ORDER BY created DESC")
 		if err != nil {
 			return handleError(err)
 		}
@@ -312,12 +320,12 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		bookmarks := []Bookmark{}
 		for rows.Next() {
 			var url, title, description, tags string
-			var createdInt int64
-			err = rows.Scan(&url, &title, &description, &tags, &createdInt)
+			var createdInt, updatedInt, private int64
+			err = rows.Scan(&url, &title, &description, &tags, &private, &createdInt, &updatedInt)
 			if err != nil {
 				return handleError(err)
 			}
-			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, time.Unix(createdInt, 0)})
+			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
 		}
 		return c.Render(http.StatusOK, "bookmarks", bookmarks)
 	})
@@ -350,7 +358,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 		log.Println(err)
 		return err
 	}
-	stmt, err := db.Prepare("SELECT url, title, description, tags, created FROM bookmarks WHERE user_id = ? AND url = ?")
+	stmt, err := db.Prepare("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND url = ?")
 	if err != nil {
 		return Bookmark{}, handleError(err)
 	}
@@ -362,12 +370,12 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 	defer rows.Close()
 	if rows.Next() {
 		var dbUrl, dbTitle, dbDescription, dbTags string
-		var dbCreated uint64
+		var dbCreated, dbUpdated, dbPrivate uint64
 		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbCreated)
 		if err != nil {
 			return Bookmark{}, handleError(err)
 		}
-		return Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Created: time.Unix(int64(dbCreated), 0)}, nil
+		return Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Private: dbPrivate == 1, Created: time.Unix(int64(dbCreated), 0), Updated: time.Unix(int64(dbUpdated), 0)}, nil
 	}
 	return Bookmark{}, nil
 }
@@ -385,16 +393,21 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		title := c.FormValue("title")
 		description := c.FormValue("description")
 		tags := c.FormValue("tags")
+		private := c.FormValue("private") == "on"
 		// we perform an upsert because the URL may already be stored and we just want to update the other fields
 		stmt, err := db.Prepare(`
-			INSERT INTO bookmarks (user_id, url, title, description, tags, created) 
-			VALUES (?, ?, ?, ?, ?, ?) 
-			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?`)
+			INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
+			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, updated = ?`)
 		if err != nil {
 			return handleError(err)
 		}
 		defer stmt.Close()
-		_, err = stmt.Exec(userid, url, title, description, tags, time.Now().Unix(), title, description, tags)
+		privateInt := 0
+		if private {
+			privateInt = 1
+		}
+		_, err = stmt.Exec(userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, time.Now().Unix())
 		if err != nil {
 			return handleError(err)
 		}

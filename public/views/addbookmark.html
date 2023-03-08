@@ -19,9 +19,9 @@
         justify-items: left;
       }
       label, button {
-        margin-top: 6px;
+        margin-top: 12px;
       }
-      input, textarea {
+      input[type="text"], input[type="url"], textarea {
         width: 100%;
         max-width: 80ch;
         font-family: sans-serif;
@@ -43,24 +43,22 @@
       <h1>Add Bookmark</h1>
       <form action="/bookmarks" method="POST">
         <label for="url">URL</label>
-        <br />
         <input type="url" name="url" id="url" value="{{.URL}}" required />
-        <br />
 
         <label for="title">Title</label>
-        <br />
         <input type="text" name="title" id="title" value="{{.Title}}"/>
-        <br />
 
         <label for="description">Description</label>
-        <br />
         <textarea name="description" id="description">{{.Description}}</textarea>
-        <br />
+
+        <label>
+          <input type="checkbox" name="private" id="private" {{if .Private}}checked{{end}} />
+          Private
+        </label>
 
         <label for="tags">Tags</label>
-        <br />
         <input type="text" name="tags" id="tags" value="{{.Tags}}" {{if .URL}}autofocus{{end}} />
-        <br />
+
         <button type="submit">Add Bookmark</button>
       </form>
     </main>

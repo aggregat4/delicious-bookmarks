@@ -13,19 +13,29 @@
         box-sizing: border-box;
         margin: 0;
         padding: 12px;
+        line-height: 1.5;
       }
       section {
         margin: 1rem;
       }
+      .bm {
+        margin-top: 6px;
+        padding: 6px;
+      }
+      .bm.private {
+        background-color: lightgray;
+      }
+      blockquote {
+        max-width: 80ch;
+      }
       dt {
         font-weight: bold;
-        margin-top: 18px;
         /* Since we have a huge list of bookmarks, this can help some browsers not render the elements until they are in the viewport. */
         content-visibility: auto;
         contain-intrinsic-size: auto 22px;
       }
       dd {
-        margin: 0 24px;
+        margin: 0;
         /* Since we have a huge list of bookmarks, this can help some browsers not render the elements until they are in the viewport. */
         content-visibility: auto;
         contain-intrinsic-size: auto 120px;
@@ -34,7 +44,6 @@
         margin: 0;
       }
       dd time {
-        font-family: monospace;
         color: #777;
       }
     </style>
@@ -47,18 +56,20 @@
       <h1>Bookmarks</h1>
       <dl>
         {{range .}}
-        <dt>
-          <a href="{{.URL}}">{{if .Title}}{{.Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
-        </dt>
-        <dd>
-          {{if .Description}}
-          <blockquote>{{.Description}}</blockquote>
-          {{end}}
-          {{if .Tags}}
-          <p>Tags: <span class="tags">{{.Tags}}</span></p>
-          {{end}}
-          <time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time></p>
-        </dd>
+        <div class="bm{{if .Private}} private{{end}}">
+          <dt>
+            <a href="{{.URL}}">{{if .Title}}{{.Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
+          </dt>
+          <dd>
+            {{if .Description}}
+            <blockquote>{{.Description}}</blockquote>
+            {{end}}
+            {{if .Tags}}
+            <p>Tags: <span class="tags">{{.Tags}}</span></p>
+            {{end}}
+            <p><time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time></p>
+          </dd>
+          </div>
         {{end}}
       </dl>
     </main>
