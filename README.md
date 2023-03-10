@@ -6,13 +6,13 @@ The program will generate a random session key, this means that after each resta
 
 The program expects a `bookmarks.sqlite` sqlite3 database with an appropriate schema to exist. You can initialise a database with the following command:
 
-```
+```bash
 TODO
 ```
 
 The password for the you provide must be `bcrypt` hashed and salted. You can call the program with the following parameters to create a hashed and salted string:
 
-```
+```bash
 ./gobookmarks -passwordtohash 'thisismysecretpassword'
 ```
 
@@ -44,6 +44,5 @@ One requirement of the design was that the addbookmark page was easily invokable
 
 ## TODO
 
-- if-modified-since caching
 - delete bookmark in the bookmark list
 - edit bookmark in the bookmark list (just open in the addbookmarks page is fine)
