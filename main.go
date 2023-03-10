@@ -110,12 +110,7 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	}
 	defer db.Close()
 	// get the user id
-	stmt, err := db.Prepare("SELECT id FROM users WHERE username = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	rows, err := stmt.Query(importBookmarksUsername)
+	rows, err := db.Query("SELECT id FROM users WHERE username = ?", importBookmarksUsername)
 	if err != nil {
 		return err
 	}
@@ -128,10 +123,8 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	if err != nil {
 		return err
 	}
-	rows.Close()
-	stmt.Close()
 	// now insert all the bookmarks
-	stmt, err = db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -210,20 +203,10 @@ func login(db *sql.DB, c echo.Context) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
 
-	stmt, err := db.Prepare("SELECT id, password FROM users WHERE username = ?")
-
+	rows, err := db.Query("SELECT id, password FROM users WHERE username = ?", username)
 	if err != nil {
 		return err
 	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query(username)
-
-	if err != nil {
-		return err
-	}
-
 	defer rows.Close()
 
 	if rows.Next() {
@@ -244,7 +227,6 @@ func login(db *sql.DB, c echo.Context) error {
 				return c.Redirect(http.StatusFound, "/login")
 			} else {
 				sess.Values["userid"] = userid
-				sess.Values["username"] = username
 				sess.Save(c.Request(), c.Response())
 				return c.Redirect(http.StatusFound, "/bookmarks")
 			}
@@ -268,25 +250,23 @@ func showLogin(c echo.Context) error {
 	return c.Render(http.StatusOK, "login", "")
 }
 
-func withValidSession(c echo.Context, delegate func(username string, userid int) error) error {
+func withValidSession(c echo.Context, delegate func(userid int) error) error {
 	sess, err := session.Get("delicious-bookmarks-session", c)
 	if err != nil {
 		clearSessionCookie(c)
 		return c.Redirect(http.StatusFound, "/login")
 	} else {
-		usernameraw := sess.Values["username"]
 		useridraw := sess.Values["userid"]
-		if usernameraw == nil || useridraw == nil {
-			log.Println("Found a session but no username or userid")
+		if useridraw == nil {
+			log.Println("Found a session but no userid")
 			return c.Redirect(http.StatusFound, "/login")
 		}
-		sessionUsername := usernameraw.(string)
 		sessionUserid := useridraw.(int)
-		if sessionUsername == "" || sessionUserid == 0 {
-			log.Println("Found a session but no username")
+		if sessionUserid == 0 {
+			log.Println("Found a session but no userid")
 			return c.Redirect(http.StatusFound, "/login")
 		} else {
-			return delegate(sessionUsername, sessionUserid)
+			return delegate(sessionUserid)
 		}
 	}
 }
@@ -301,18 +281,38 @@ type Bookmark struct {
 	Updated     time.Time
 }
 
+func getLastModifiedDate(db *sql.DB, userid int) (time.Time, error) {
+	rows, err := db.Query("SELECT last_update FROM users WHERE id = ?", userid)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var updated int64
+		err = rows.Scan(&updated)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return time.Unix(updated, 0), nil
+	}
+	return time.Time{}, nil
+}
+
 func showBookmarks(db *sql.DB, c echo.Context) error {
-	return withValidSession(c, func(username string, userid int) error {
+	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			return c.Render(http.StatusInternalServerError, "bookmarks", nil)
 		}
-		stmt, err := db.Prepare("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? ORDER BY created DESC")
+		currentLastModifiedDateTime, err := getLastModifiedDate(db, userid)
 		if err != nil {
 			return handleError(err)
 		}
-		defer stmt.Close()
-		rows, err := stmt.Query(userid)
+		if c.Request().Header.Get("If-Modified-Since") == currentLastModifiedDateTime.Format(http.TimeFormat) {
+			return c.NoContent(http.StatusNotModified)
+		}
+
+		rows, err := db.Query("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? ORDER BY created DESC", userid)
 		if err != nil {
 			return handleError(err)
 		}
@@ -327,12 +327,14 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
 		}
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
 		return c.Render(http.StatusOK, "bookmarks", bookmarks)
 	})
 }
 
 func showAddBookmark(db *sql.DB, c echo.Context) error {
-	return withValidSession(c, func(username string, userid int) error {
+	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			return c.Render(http.StatusInternalServerError, "addbookmark", nil)
@@ -358,12 +360,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 		log.Println(err)
 		return err
 	}
-	stmt, err := db.Prepare("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND url = ?")
-	if err != nil {
-		return Bookmark{}, handleError(err)
-	}
-	defer stmt.Close()
-	rows, err := stmt.Query(userid, url)
+	rows, err := db.Query("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
 	if err != nil {
 		return Bookmark{}, handleError(err)
 	}
@@ -381,7 +378,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
-	return withValidSession(c, func(username string, userid int) error {
+	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			return c.Redirect(http.StatusFound, "/bookmarks")
@@ -394,20 +391,19 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		description := c.FormValue("description")
 		tags := c.FormValue("tags")
 		private := c.FormValue("private") == "on"
-		// we perform an upsert because the URL may already be stored and we just want to update the other fields
-		stmt, err := db.Prepare(`
-			INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
-			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, updated = ?`)
-		if err != nil {
-			return handleError(err)
-		}
-		defer stmt.Close()
 		privateInt := 0
 		if private {
 			privateInt = 1
 		}
-		_, err = stmt.Exec(userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, time.Now().Unix())
+		// we perform an upsert because the URL may already be stored and we just want to update the other fields
+		_, err := db.Exec(`
+			INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
+			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, updated = ?`, userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, time.Now().Unix())
+		if err != nil {
+			return handleError(err)
+		}
+		_, err = db.Exec("UPDATE users SET last_update = ? WHERE id = ?", time.Now().Unix(), userid)
 		if err != nil {
 			return handleError(err)
 		}

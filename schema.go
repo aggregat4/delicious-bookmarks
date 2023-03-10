@@ -16,20 +16,10 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 
 	migrateSchema(db)
 
-	stmt, err := db.Prepare("SELECT password FROM users WHERE id = 1 AND username = ?")
-
+	rows, err := db.Query("SELECT password FROM users WHERE id = 1 AND username = ?", initdbUsername)
 	if err != nil {
 		return err
 	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query(initdbUsername)
-
-	if err != nil {
-		return err
-	}
-
 	defer rows.Close()
 
 	if rows.Next() {
@@ -44,16 +34,7 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 			return errors.New("the database already has this account but with a different password")
 		}
 	} else {
-		stmt, err := db.Prepare("INSERT INTO users (username, password) VALUES (?, ?)")
-
-		if err != nil {
-			return err
-		}
-
-		defer stmt.Close()
-
-		_, err = stmt.Exec(initdbUsername, initdbPassword)
-
+		_, err := db.Exec("INSERT INTO users (username, password, last_update) VALUES (?, ?, -1)", initdbUsername, initdbPassword)
 		if err != nil {
 			return err
 		}
@@ -67,55 +48,29 @@ func initMigrationTable(db *sql.DB) error {
 }
 
 func existsMigrationTable(db *sql.DB) (bool, error) {
-	stmt, err := db.Prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'")
-
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'")
 	if err != nil {
 		return false, err
 	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query()
-
-	if err != nil {
-		return false, err
-	}
-
 	defer rows.Close()
-
 	return rows.Next(), nil
 }
 
 func getAppliedMigrations(db *sql.DB) ([]int, error) {
-	stmt, err := db.Prepare("SELECT sequence_id FROM migrations")
-
+	rows, err := db.Query("SELECT sequence_id FROM migrations")
 	if err != nil {
 		return nil, err
 	}
-
-	defer stmt.Close()
-
-	rows, err := stmt.Query()
-
-	if err != nil {
-		return nil, err
-	}
-
 	defer rows.Close()
-
 	var migrations []int
-
 	for rows.Next() {
 		var sequenceId int
 		err = rows.Scan(&sequenceId)
-
 		if err != nil {
 			return nil, err
 		}
-
 		migrations = append(migrations, sequenceId)
 	}
-
 	return migrations, nil
 }
 
@@ -130,7 +85,8 @@ var migrations = []Migration{
 		CREATE TABLE IF NOT EXISTS users (
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL,
-		password TEXT NOT NULL
+		password TEXT NOT NULL,
+		last_update INTEGER NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS bookmarks (
