@@ -123,6 +123,7 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	if err != nil {
 		return err
 	}
+	rows.Close()
 	// now insert all the bookmarks
 	stmt, err := db.Prepare("INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
