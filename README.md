@@ -1,4 +1,6 @@
-# Simple Online Bookmarks Storage
+# Delicious Bookmarks
+
+A really simple bookmark storage and retrieval system that can be easily integrated in bookmarklets and extensions and which can serve as a very basic replacement for `del.icio.us`- or `pinboard`-like services.
 
 ## Launching
 
@@ -10,7 +12,7 @@ The program expects a `bookmarks.sqlite` sqlite3 database with an appropriate sc
 TODO
 ```
 
-The password for the you provide must be `bcrypt` hashed and salted. You can call the program with the following parameters to create a hashed and salted string:
+The password for an account must be `bcrypt` hashed and salted. You can call the program with the following parameters to create a hashed and salted string:
 
 ```bash
 ./gobookmarks -passwordtohash 'thisismysecretpassword'
@@ -32,13 +34,15 @@ This is a web application written in go, distributed as a statically linked bina
 
 User authentication is form and password based. Passwords are stored salted and hashed using Bcrypt.
 
-After logging into the application a cookie is set that is symmetrically encrypted and which contains all the required session information (basically the userid).
+After logging into the application a cookie is set that is symmetrically encrypted and which contains the userid of the authenticated user.
 
 The web application is completely JavaScript free, not for ideological reasons but it doesn't need any at the moment.
 
 The application supports adding, editing and showing all bookmarks.
 
-The bookmarks collection page is reverse chronologically sorted and contains _all_ kown bookmarks on one page. This has the advantage of giving search for free (just find on the page) and it stops us from having to implement paging. The disadvantage is that the page can get big. The contents are sent gzip encoded and for browsers that support it, the bookmarks are rendered with `content-visibility` set to `auto` and a guesstimated constant intrinsic size. This means that browsers that support it will only render one viewport full of bookmarks at a time. Sadly Firefox does not yet support this feature.
+The bookmarks collection page is reverse chronologically sorted and contains _all_ kown bookmarks on one page. This has the advantage of giving search for free (just find on the page) and it stops us from having to implement paging. The disadvantage is that the page can get big. The contents are sent gzip encoded and for browsers that support it, the bookmarks are rendered with `content-visibility` set to `auto` and a guesstimated constant intrinsic size. This means that browsers that support it will only render one viewport full of bookmarks at a time.
+
+In Firefox you can enable experimental suport for `content-visibility` by enabling the `layout.css.content-visibility.enabled` flag in `about:config`.
 
 One requirement of the design was that the addbookmark page was easily invokable from a bookmarklet or a browser extension as a shortcut for adding new URLs.
 
