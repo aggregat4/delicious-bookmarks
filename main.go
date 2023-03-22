@@ -369,7 +369,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 	if rows.Next() {
 		var dbUrl, dbTitle, dbDescription, dbTags string
 		var dbCreated, dbUpdated, dbPrivate uint64
-		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbCreated)
+		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbPrivate, &dbCreated, &dbUpdated)
 		if err != nil {
 			return Bookmark{}, handleError(err)
 		}
@@ -381,7 +381,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 func addBookmark(db *sql.DB, c echo.Context) error {
 	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
-			log.Println(err)
+			log.Println("addBookmark error: ", err)
 			return c.Redirect(http.StatusFound, "/bookmarks")
 		}
 		url := c.FormValue("url")
