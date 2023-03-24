@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -183,16 +185,6 @@ func withValidSession(c echo.Context, delegate func(userid int) error) error {
 	}
 }
 
-type Bookmark struct {
-	URL         string
-	Title       string
-	Description string
-	Tags        string
-	Private     bool
-	Created     time.Time
-	Updated     time.Time
-}
-
 func getLastModifiedDate(db *sql.DB, userid int) (time.Time, error) {
 	rows, err := db.Query("SELECT last_update FROM users WHERE id = ?", userid)
 	if err != nil {
@@ -210,6 +202,29 @@ func getLastModifiedDate(db *sql.DB, userid int) (time.Time, error) {
 	return time.Time{}, nil
 }
 
+type BookmarkSlice struct {
+	Bookmarks   []Bookmark
+	HasLeft     bool
+	LeftOffset  int64
+	HasRight    bool
+	RightOffset int64
+}
+
+type Bookmark struct {
+	URL         string
+	Title       string
+	Description string
+	Tags        string
+	Private     bool
+	Created     time.Time
+	Updated     time.Time
+}
+
+const (
+	left  int = 0
+	right int = 1
+)
+
 func showBookmarks(db *sql.DB, c echo.Context) error {
 	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
@@ -223,8 +238,37 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		if c.Request().Header.Get("If-Modified-Since") == currentLastModifiedDateTime.Format(http.TimeFormat) {
 			return c.NoContent(http.StatusNotModified)
 		}
-
-		rows, err := db.Query("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? ORDER BY created DESC", userid)
+		var direction = right
+		if c.QueryParam("direction") != "" {
+			direction, err = strconv.Atoi(c.QueryParam("direction"))
+			if err != nil {
+				direction = right
+			}
+			if direction != 0 && direction != 1 {
+				direction = right
+			}
+		}
+		var offset int64
+		if direction == left {
+			offset = 0
+		} else {
+			offset = math.MaxInt64
+		}
+		if c.QueryParam("offset") != "" {
+			offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
+			// ignore error here, we'll just use the default value
+		}
+		// this is efficient paging as per https://www2.sqlite.org/cvstrac/wiki?p=ScrollingCursor
+		// we use an anchor value and reverse the sorting based on what direction we are paging
+		// the baseline is a list of bookmarks in descending order of creation date and moving
+		// left means seeing newer bookmarks, and moving right means seeing older bookmarks
+		var query string
+		if direction == right {
+			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT 50"
+		} else {
+			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT 50"
+		}
+		rows, err := db.Query(query, userid, offset)
 		if err != nil {
 			return handleError(err)
 		}
@@ -239,9 +283,33 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
 		}
+		if direction == left {
+			// if we are moving back in the list of bookmarks the query has given us an ascending list of them
+			// we need to reverse them to satisfy the invariant of having a descending list of bookmarks
+			for i, j := 0, len(bookmarks)-1; i < j; i, j = i+1, j-1 {
+				bookmarks[i], bookmarks[j] = bookmarks[j], bookmarks[i]
+			}
+		}
+		var HasLeft = true
+		if offset == math.MaxInt64 || (direction == left && len(bookmarks) < 50) {
+			HasLeft = false
+		}
+		var LeftOffset int64 = 0
+		if len(bookmarks) > 0 {
+			LeftOffset = bookmarks[0].Created.Unix()
+		}
+		var HasRight = true
+		if offset == 0 || (direction == right && len(bookmarks) < 50) {
+			HasRight = false
+		}
+		var RightOffset int64 = math.MaxInt64
+		if len(bookmarks) == 50 {
+			RightOffset = bookmarks[len(bookmarks)-1].Created.Unix()
+		}
+
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", bookmarks)
+		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset})
 	})
 }
 

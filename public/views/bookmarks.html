@@ -15,6 +15,10 @@
         padding: 12px;
         line-height: 1.5;
       }
+      nav {
+        display: flex;
+        justify-content: space-between;
+      }
       section {
         margin: 1rem;
       }
@@ -50,12 +54,16 @@
   </head>
   <body>
     <nav>
+      <div>
+        {{if .HasLeft}}<a href="/bookmarks?offset={{.LeftOffset}}&direction=0">Previous</a>{{end}}
+        {{if .HasRight}}<a href="/bookmarks?offset={{.RightOffset}}&direction=1">Next</a>{{end}}
+      </div>
       <a href="/addbookmark">Add Bookmark</a>
     </nav>
     <main>
       <h1>Bookmarks</h1>
       <dl>
-        {{range .}}
+        {{range .Bookmarks}}
         <div class="bm{{if .Private}} private{{end}}">
           <dt>
             <a href="{{.URL}}">{{if .Title}}{{.Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
