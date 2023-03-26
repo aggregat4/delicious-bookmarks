@@ -55,8 +55,16 @@
   <body>
     <nav>
       <div>
-        {{if .HasLeft}}<a href="/bookmarks?offset={{.LeftOffset}}&direction=0">Previous</a>{{end}}
-        {{if .HasRight}}<a href="/bookmarks?offset={{.RightOffset}}&direction=1">Next</a>{{end}}
+        {{if .HasLeft}}
+        <a href="/bookmarks?offset={{.LeftOffset}}&direction=0">Previous</a>
+        {{else}}
+        <a role="link" aria-disabled="true">Previous</a>
+        {{end}}
+        {{if .HasRight}}
+        <a href="/bookmarks?offset={{.RightOffset}}&direction=1">Next</a>
+        {{else}}
+        <a role="link" aria-disabled="true">Next</a>
+        {{end}}
       </div>
       <a href="/addbookmark">Add Bookmark</a>
     </nav>

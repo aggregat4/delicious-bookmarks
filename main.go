@@ -225,6 +225,8 @@ const (
 	right int = 1
 )
 
+const BOOKMARKS_PAGE_SIZE = 50
+
 func showBookmarks(db *sql.DB, c echo.Context) error {
 	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
@@ -264,11 +266,11 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		// left means seeing newer bookmarks, and moving right means seeing older bookmarks
 		var query string
 		if direction == right {
-			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT 50"
+			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
 		} else {
-			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT 50"
+			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
 		}
-		rows, err := db.Query(query, userid, offset)
+		rows, err := db.Query(query, userid, offset, BOOKMARKS_PAGE_SIZE+1)
 		if err != nil {
 			return handleError(err)
 		}
@@ -291,7 +293,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 		}
 		var HasLeft = true
-		if offset == math.MaxInt64 || (direction == left && len(bookmarks) < 50) {
+		if offset == math.MaxInt64 || (direction == left && len(bookmarks) < (BOOKMARKS_PAGE_SIZE+1)) {
 			HasLeft = false
 		}
 		var LeftOffset int64 = 0
@@ -299,17 +301,17 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			LeftOffset = bookmarks[0].Created.Unix()
 		}
 		var HasRight = true
-		if offset == 0 || (direction == right && len(bookmarks) < 50) {
+		if offset == 0 || (direction == right && len(bookmarks) < (BOOKMARKS_PAGE_SIZE+1)) {
 			HasRight = false
 		}
 		var RightOffset int64 = math.MaxInt64
-		if len(bookmarks) == 50 {
-			RightOffset = bookmarks[len(bookmarks)-1].Created.Unix()
+		if len(bookmarks) >= BOOKMARKS_PAGE_SIZE {
+			RightOffset = bookmarks[BOOKMARKS_PAGE_SIZE-1].Created.Unix()
 		}
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset})
+		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks[:len(bookmarks)-1], HasLeft, LeftOffset, HasRight, RightOffset})
 	})
 }
 
