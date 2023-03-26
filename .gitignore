@@ -1,4 +1,4 @@
 gobookmarks
-bookmarks.sqlite
+*.sqlite
 tmp/
 .vscode/
