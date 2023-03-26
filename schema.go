@@ -105,9 +105,28 @@ var migrations = []Migration{
 		CREATE INDEX IF NOT EXISTS bookmarks_created_idx ON bookmarks(created);
 		`,
 	},
+	// adding a full text search index to the bookmarks table
+	{2,
+		`
+		CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(url, title, description, tags, content='bookmarks', content_rowid='id');
+		CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN
+			INSERT INTO bookmarks_fts(rowid, url, title, description, tags) VALUES (new.id, new.url, new.title, new.description, new.tags);
+		END;
+		CREATE TRIGGER IF NOT EXISTS bookmarks_ad AFTER DELETE ON bookmarks BEGIN
+			INSERT INTO bookmarks_fts(bookmarks_fts, rowid, url, title, description, tags) VALUES('delete', old.id, old.url, old.title, old.description, old.tags);
+		END;
+		CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
+			INSERT INTO bookmarks_fts(bookmarks_fts, rowid, url, title, description, tags) VALUES('delete', old.id, old.url, old.title, old.description, old.tags);
+			INSERT INTO bookmarks_fts(rowid, url, title, description, tags) VALUES (new.id, new.url, new.title, new.description, new.tags);
+		END;
+		-- populate the bookmarks_fts table with the existing bookmarks when the bookmarks_fts table is empty
+		INSERT INTO bookmarks_fts(bookmarks_fts) VALUES('rebuild');
+		`,
+	},
 }
 
 func migrateSchema(db *sql.DB) error {
+	println("Migrating schema")
 	exists, err := existsMigrationTable(db)
 	if err != nil {
 		return err
@@ -124,6 +143,7 @@ func migrateSchema(db *sql.DB) error {
 	}
 	for _, migration := range migrations {
 		if !contains(appliedMigrations, migration.SequenceId) {
+			println("Executing migration ", migration.SequenceId)
 			_, err = db.Exec(migration.Sql)
 			if err != nil {
 				return err

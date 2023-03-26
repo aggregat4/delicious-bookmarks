@@ -101,6 +101,9 @@ func initAndVerifyDb() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	err = migrateSchema(db)
+
 	return db, err
 }
 
@@ -260,7 +263,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
 			// ignore error here, we'll just use the default value
 		}
-		// this is efficient paging as per https://www2.sqlite.org/cvstrac/wiki?p=ScrollingCursor
+		// This is efficient paging as per https://www2.sqlite.org/cvstrac/wiki?p=ScrollingCursor
 		// we use an anchor value and reverse the sorting based on what direction we are paging
 		// the baseline is a list of bookmarks in descending order of creation date and moving
 		// left means seeing newer bookmarks, and moving right means seeing older bookmarks
