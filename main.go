@@ -220,6 +220,7 @@ type BookmarkSlice struct {
 	LeftOffset  int64
 	HasRight    bool
 	RightOffset int64
+	SearchQuery string
 }
 
 type Bookmark struct {
@@ -356,7 +357,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset})
+		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset, searchQuery})
 	})
 }
 
