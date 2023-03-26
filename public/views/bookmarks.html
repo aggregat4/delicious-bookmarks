@@ -53,23 +53,30 @@
     </style>
   </head>
   <body>
-    <nav>
-      <div>
-        {{if .HasLeft}}
-        <a href="/bookmarks?offset={{.LeftOffset}}&direction=0{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}">Previous</a>
-        {{else}}
-        <a role="link" aria-disabled="true">Previous</a>
-        {{end}}
-        {{if .HasRight}}
-        <a href="/bookmarks?offset={{.RightOffset}}&direction=1{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}">Next</a>
-        {{else}}
-        <a role="link" aria-disabled="true">Next</a>
-        {{end}}
-      </div>
-      <a href="/addbookmark">Add Bookmark</a>
-    </nav>
+    <header>
+      <h1><a href="/bookmarks">Bookmarks</a></h1>
+      <nav>
+        <div>
+          {{if .HasLeft}}
+          <a href="/bookmarks?offset={{.LeftOffset}}&direction=0{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}">Previous</a>
+          {{else}}
+          <a role="link" aria-disabled="true">Previous</a>
+          {{end}}
+          {{if .HasRight}}
+          <a href="/bookmarks?offset={{.RightOffset}}&direction=1{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}">Next</a>
+          {{else}}
+          <a role="link" aria-disabled="true">Next</a>
+          {{end}}
+        </div>
+        <form action="/bookmarks" method="get">
+          <label for="search">Search:</label>
+          <input type="search" id="search" name="q" value="{{.SearchQuery}}">
+          <button>Search</button>
+        </form>
+        <a href="/addbookmark">Add Bookmark</a>
+      </nav>
+    </header>
     <main>
-      <h1>Bookmarks</h1>
       <dl>
         {{range .Bookmarks}}
         <div class="bm{{if .Private}} private{{end}}">
