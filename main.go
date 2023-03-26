@@ -265,7 +265,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		}
 		// This is efficient paging as per https://www2.sqlite.org/cvstrac/wiki?p=ScrollingCursor
 		// we use an anchor value and reverse the sorting based on what direction we are paging
-		// the baseline is a list of bookmarks in descending order of creation date and moving
+		// The baseline is a list of bookmarks in descending order of creation date and moving
 		// left means seeing newer bookmarks, and moving right means seeing older bookmarks
 		var query string
 		if direction == right {
@@ -273,6 +273,8 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		} else {
 			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
 		}
+		// we are querying for one element more so that we can determine whether we have reached the end of the dataset or not\
+		// this then allows us to disable paging in a certain direction
 		rows, err := db.Query(query, userid, offset, BOOKMARKS_PAGE_SIZE+1)
 		if err != nil {
 			return handleError(err)
