@@ -339,7 +339,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 		}
 		var HasLeft = true
-		if offset == math.MaxInt64 || (direction == left && !moreResultsLeft) {
+		if /*!(direction == right && offset != 0 && len(bookmarks) == BOOKMARKS_PAGE_SIZE) && */ offset == math.MaxInt64 || (direction == left && !moreResultsLeft) {
 			HasLeft = false
 		}
 		var LeftOffset int64 = 0
@@ -347,11 +347,11 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			LeftOffset = bookmarks[0].Created.Unix()
 		}
 		var HasRight = true
-		if offset == 0 || (direction == right && !moreResultsLeft) {
+		if /* !(direction == left && offset != 0 && len(bookmarks) == BOOKMARKS_PAGE_SIZE) && */ offset == 0 || (direction == right && !moreResultsLeft) {
 			HasRight = false
 		}
 		var RightOffset int64 = math.MaxInt64
-		if moreResultsLeft {
+		if len(bookmarks) >= BOOKMARKS_PAGE_SIZE {
 			RightOffset = bookmarks[BOOKMARKS_PAGE_SIZE-1].Created.Unix()
 		}
 
