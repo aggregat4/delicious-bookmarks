@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,7 +72,11 @@ func runServer() {
 	e := echo.New()
 
 	t := &Template{
-		templates: template.Must(template.ParseFS(viewTemplates, "public/views/*.html")),
+		templates: template.Must(template.New("").Funcs(template.FuncMap{
+			"highlight": func(text string) template.HTML {
+				return template.HTML(highlight(template.HTMLEscapeString(text)))
+			},
+		}).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
 
@@ -94,6 +99,10 @@ func runServer() {
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 
 	e.Logger.Fatal(e.Start(":1323"))
+}
+
+func highlight(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, "{{mark}}", "<mark>"), "{{endmark}}", "</mark>")
 }
 
 func initAndVerifyDb() (*sql.DB, error) {
@@ -263,32 +272,63 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
 			// ignore error here, we'll just use the default value
 		}
+		var searchQuery string = c.QueryParam("q")
+		bookmarks := []Bookmark{}
 		// This is efficient paging as per https://www2.sqlite.org/cvstrac/wiki?p=ScrollingCursor
 		// we use an anchor value and reverse the sorting based on what direction we are paging
 		// The baseline is a list of bookmarks in descending order of creation date and moving
 		// left means seeing newer bookmarks, and moving right means seeing older bookmarks
-		var query string
-		if direction == right {
-			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
-		} else {
-			query = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
-		}
+		var sqlQuery string
+		var rows *sql.Rows
 		// we are querying for one element more so that we can determine whether we have reached the end of the dataset or not\
 		// this then allows us to disable paging in a certain direction
-		rows, err := db.Query(query, userid, offset, BOOKMARKS_PAGE_SIZE+1)
+		if searchQuery != "" {
+			if direction == right {
+				sqlQuery = `
+				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.created, b.updated
+				FROM bookmarks_fts bfts, bookmarks b
+				WHERE bfts.rowid = b.id
+				AND b.user_id = ?
+				AND b.created < ?
+				AND bookmarks_fts MATCH ?
+				ORDER BY b.created DESC
+				LIMIT ?`
+			} else {
+				sqlQuery = `
+				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.created, b.updated
+				FROM bookmarks_fts bfts, bookmarks b
+				WHERE bfts.rowid = b.id
+				AND b.user_id = ?
+				AND b.created > ?
+				AND bookmarks_fts MATCH ?
+				ORDER BY b.created ASC
+				LIMIT ?`
+			}
+			rows, err = db.Query(sqlQuery, userid, offset, searchQuery, BOOKMARKS_PAGE_SIZE+1)
+		} else {
+			if direction == right {
+				sqlQuery = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
+			} else {
+				sqlQuery = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
+			}
+			rows, err = db.Query(sqlQuery, userid, offset, BOOKMARKS_PAGE_SIZE+1)
+		}
 		if err != nil {
 			return handleError(err)
 		}
 		defer rows.Close()
-		bookmarks := []Bookmark{}
 		for rows.Next() {
-			var url, title, description, tags string
+			var url, title, description, tags sql.NullString
 			var createdInt, updatedInt, private int64
 			err = rows.Scan(&url, &title, &description, &tags, &private, &createdInt, &updatedInt)
 			if err != nil {
 				return handleError(err)
 			}
-			bookmarks = append(bookmarks, Bookmark{url, title, description, tags, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
+			bookmarks = append(bookmarks, Bookmark{url.String, title.String, description.String, tags.String, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
+		}
+		moreResultsLeft := len(bookmarks) == (BOOKMARKS_PAGE_SIZE + 1)
+		if moreResultsLeft {
+			bookmarks = bookmarks[:len(bookmarks)-1]
 		}
 		if direction == left {
 			// if we are moving back in the list of bookmarks the query has given us an ascending list of them
@@ -298,7 +338,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 		}
 		var HasLeft = true
-		if offset == math.MaxInt64 || (direction == left && len(bookmarks) < (BOOKMARKS_PAGE_SIZE+1)) {
+		if offset == math.MaxInt64 || (direction == left && !moreResultsLeft) {
 			HasLeft = false
 		}
 		var LeftOffset int64 = 0
@@ -306,17 +346,17 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			LeftOffset = bookmarks[0].Created.Unix()
 		}
 		var HasRight = true
-		if offset == 0 || (direction == right && len(bookmarks) < (BOOKMARKS_PAGE_SIZE+1)) {
+		if offset == 0 || (direction == right && !moreResultsLeft) {
 			HasRight = false
 		}
 		var RightOffset int64 = math.MaxInt64
-		if len(bookmarks) >= BOOKMARKS_PAGE_SIZE {
+		if moreResultsLeft {
 			RightOffset = bookmarks[BOOKMARKS_PAGE_SIZE-1].Created.Unix()
 		}
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks[:len(bookmarks)-1], HasLeft, LeftOffset, HasRight, RightOffset})
+		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset})
 	})
 }
 
