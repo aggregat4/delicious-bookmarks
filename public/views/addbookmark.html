@@ -12,55 +12,88 @@
         font-family: sans-serif;
         box-sizing: border-box;
         margin: 0;
-        padding: 12px;
+        line-height: 1.5;
+        background-color: white;
+        color: #333;
+      }
+      h1 {
+        text-align: left;     
+        margin: 1rem 0;
+        letter-spacing: -1px;
+        font-weight: normal;
+        font-size: 2rem;
+        margin: 1rem 1rem;
       }
       form {
+        margin: 0 1rem;
         display: flex;
         flex-direction: column;
-        justify-items: left;
+        gap: 0.5rem;
       }
-      label, button {
-        margin-top: 12px;
+      button {
+        box-sizing: border-box;
+        width: 15ch;
+        margin-top: 0.5rem;
       }
       input[type="text"], input[type="url"], textarea {
+        display: block;
+        box-sizing: border-box;
         width: 100%;
         max-width: 80ch;
         font-family: sans-serif;
       }
+      input[type="checkbox"] {
+        display: inline-block;
+      }
       textarea {
         height: 5rem;
+        display: block;
       }
-      button {
-        align-self: flex-start;
-        font-family: sans-serif;
+      .delicious {
+        font-size: 60%;
+        vertical-align: middle;
+      }
+      a, a:visited {
+        color: rgb(36, 36, 118);
+      }
+      .actions {
+        display: flex;
+        gap: 1rem;
+        align-items: baseline;
       }
     </style>
   </head>
   <body>
-    <nav>
-      <a href="/bookmarks">Bookmarks</a>
-    </nav>
+    <header>
+      <h1>Add Delici<span class="delicious">😋</span>us Bookmark</h1>
+    </header>
     <main>
-      <h1>Add Bookmark</h1>
       <form action="/bookmarks" method="POST">
-        <label for="url">URL</label>
-        <input type="url" name="url" id="url" value="{{.URL}}" required />
+        <label>URL
+          <input type="url" name="url" value="{{.URL}}" required />
+        </label>
 
-        <label for="title">Title</label>
-        <input type="text" name="title" id="title" value="{{.Title}}"/>
+        <label>Title
+          <input type="text" name="title" value="{{.Title}}"/>
+        </label>
 
-        <label for="description">Description</label>
-        <textarea name="description" id="description">{{.Description}}</textarea>
+        <label>Description
+          <textarea name="description">{{.Description}}</textarea>
+        </label>
 
         <label>
-          <input type="checkbox" name="private" id="private" {{if .Private}}checked{{end}} />
+          <input type="checkbox" name="private" {{if .Private}}checked{{end}} />
           Private
         </label>
 
-        <label for="tags">Tags</label>
-        <input type="text" name="tags" id="tags" value="{{.Tags}}" {{if .URL}}autofocus{{end}} />
+        <label>Tags
+          <input type="text" name="tags" value="{{.Tags}}" {{if .URL}}autofocus{{end}} />
+        </label>
 
-        <button type="submit">Add Bookmark</button>
+        <div class="actions">
+          <button type="submit">Add Bookmark</button>
+          <a href="/bookmarks">Cancel</a>
+        </div>
       </form>
     </main>
   </body>

@@ -7,18 +7,54 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login to Bookmarks</title>
   <link rel="icon" href="data:,">
+  <style>
+    body {
+      font-family: sans-serif;
+      box-sizing: border-box;
+      margin: 0;
+      line-height: 1.5;
+      background-color: white;
+      color: #333;
+    }
+    h1 {
+      text-align: left;     
+      margin: 1rem 0;
+      letter-spacing: -1px;
+      font-weight: normal;
+      font-size: 2rem;
+      margin: 1rem 1rem;
+    }
+    form {
+      margin: 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    input {
+      width: 40ch;
+      display: block;
+      box-sizing: border-box;
+    }
+    button {
+      box-sizing: border-box;
+      width: 12ch;
+      margin-top: 0.5rem;
+    }
+    .delicious {
+        font-size: 60%;
+        vertical-align: middle;
+      }
+  </style>
 </head>
 <body>
-  <h1>Login to Bookmarks</h1>
+  <h1>Login to Delici<span class="delicious">😋</span>us Bookmarks</h1>
   <form action="/login" method="POST">
-    <label for="username">Username</label>
-    <br>
-    <input type="text" name="username" id="username" required autofocus>
-    <br>
-    <label for="password">Password</label>
-    <br>
-    <input type="password" name="password" id="password" required>
-    <br>
+    <label>Username
+      <input type="text" name="username" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" required>
+    </label>
     <button type="submit">Login</button>
   </form>  
 </body>
