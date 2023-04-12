@@ -60,6 +60,10 @@ location /login {
 }
 ```
 
+## Building
+
+Two build scripts  and included for building the binary locally (`build-local.sh`) or using a docker container for better reproducability (`build-with-docker.sh`). The latter is recommended for binaries that are deployed for hosting somewhere as they build against a stable docker image that has a more conservative glibc dependency version as a local build may have.
+
 ## Migrating from Pinboard
 
 The program can be started in a migration mode that will take a JSON export of a Pinboard account and import it into an empty database. The database must be initialised and one user account must have been created beforehand.
