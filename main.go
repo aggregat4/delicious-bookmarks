@@ -94,6 +94,9 @@ func runServer() {
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
 	}))
+	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
+		TokenLookup: "form:csrf_token",
+	}))
 
 	e.GET("/login", func(c echo.Context) error { return showLogin(c) })
 	e.POST("/login", func(c echo.Context) error { return login(db, c) })
@@ -176,8 +179,12 @@ func clearSessionCookie(c echo.Context) {
 	})
 }
 
+type LoginPage struct {
+	CsrfToken string
+}
+
 func showLogin(c echo.Context) error {
-	return c.Render(http.StatusOK, "login", "")
+	return c.Render(http.StatusOK, "login", LoginPage{CsrfToken: c.Get("csrf").(string)})
 }
 
 func withValidSession(c echo.Context, delegate func(userid int) error) error {
@@ -235,6 +242,11 @@ type Bookmark struct {
 	Private     bool
 	Created     time.Time
 	Updated     time.Time
+}
+
+type AddBookmarkPage struct {
+	Bookmark  Bookmark
+	CsrfToken string
 }
 
 const (
@@ -383,7 +395,7 @@ func showAddBookmark(db *sql.DB, c echo.Context) error {
 				return c.Render(http.StatusOK, "addbookmark", existingBookmark)
 			}
 		}
-		return c.Render(http.StatusOK, "addbookmark", Bookmark{URL: url, Title: title, Description: description})
+		return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
 	})
 }
 

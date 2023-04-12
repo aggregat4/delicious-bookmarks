@@ -56,6 +56,7 @@
       <input type="password" name="password" required>
     </label>
     <button type="submit">Login</button>
+    <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
   </form>  
 </body>
 </html>

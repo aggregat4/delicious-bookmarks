@@ -70,30 +70,32 @@
     <main>
       <form action="/bookmarks" method="POST">
         <label>URL
-          <input type="url" name="url" value="{{.URL}}" required />
+          <input type="url" name="url" value="{{.Bookmark.URL}}" required />
         </label>
 
         <label>Title
-          <input type="text" name="title" value="{{.Title}}"/>
+          <input type="text" name="title" value="{{.Bookmark.Title}}"/>
         </label>
 
         <label>Description
-          <textarea name="description">{{.Description}}</textarea>
+          <textarea name="description">{{.Bookmark.Description}}</textarea>
         </label>
 
         <label>
-          <input type="checkbox" name="private" {{if .Private}}checked{{end}} />
+          <input type="checkbox" name="private" {{if .Bookmark.Private}}checked{{end}} />
           Private
         </label>
 
         <label>Tags
-          <input type="text" name="tags" value="{{.Tags}}" {{if .URL}}autofocus{{end}} />
+          <input type="text" name="tags" value="{{.Bookmark.Tags}}" {{if .Bookmark.URL}}autofocus{{end}} />
         </label>
 
         <div class="actions">
           <button type="submit">Add Bookmark</button>
           <a href="/bookmarks">Cancel</a>
         </div>
+
+        <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
       </form>
     </main>
   </body>
