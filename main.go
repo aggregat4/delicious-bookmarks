@@ -62,6 +62,13 @@ func main() {
 //go:embed public/views/*.html
 var viewTemplates embed.FS
 
+func GetOrDefault(value string, defaultValue string) string {
+	if value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 func runServer() {
 	db, err := initAndVerifyDb()
 	if err != nil {
@@ -82,11 +89,7 @@ func runServer() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	sessionCookieSecretKey := os.Getenv("BOOKMARKS_SESSION_COOKIE_SECRET_KEY")
-	if sessionCookieSecretKey == "" {
-		// generate a cookie secret key
-		sessionCookieSecretKey = uuid.New().String()
-	}
+	sessionCookieSecretKey := GetOrDefault(os.Getenv("BOOKMARKS_SESSION_COOKIE_SECRET_KEY"), uuid.New().String())
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
@@ -98,7 +101,8 @@ func runServer() {
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 
-	e.Logger.Fatal(e.Start(":1323"))
+	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
+	e.Logger.Fatal(e.Start(":" + port))
 }
 
 func highlight(text string) string {
