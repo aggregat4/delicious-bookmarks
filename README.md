@@ -108,3 +108,4 @@ One requirement of the design was that the addbookmark page was easily invokable
 
 - delete bookmark in the bookmark list
 - edit bookmark in the bookmark list (just open in the addbookmarks page is fine)
+- implement read later functionality based on a `toread` tag and automatically generating an rss feed from these items and hiding them in the main ui (?)
