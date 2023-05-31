@@ -87,7 +87,7 @@
         </label>
 
         <label>Tags
-          <input type="text" name="tags" value="{{.Bookmark.Tags}}" {{if .Bookmark.URL}}autofocus{{end}} />
+          <input type="text" name="tags" autocomplete="off" autocapitalize="off" value="{{.Bookmark.Tags}}" {{if .Bookmark.URL}}autofocus{{end}} />
         </label>
 
         <div class="actions">
