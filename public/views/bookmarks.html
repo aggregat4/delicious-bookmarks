@@ -86,7 +86,17 @@
         font-size: 60%;
         vertical-align: middle;
       }
-    </style>
+      form.deletebookmark {
+        display: none;
+      }
+      .canceldeletebookmark {
+        display: none;
+      }
+      .bmactionbar {
+        display: flex;
+        column-gap: 12px;
+      }
+    </style>  
   </head>
   <body>
     <header>
@@ -126,15 +136,47 @@
             {{if .Tags}}
             <p>Tags: <span class="tags">{{highlight .Tags}}</span></p>
             {{end}}
-            <p>
+            <span class="bmactionbar">
               <time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time>
               <a class="editbookmark" href="/addbookmark?url={{.URL}}">Edit</a>
-            </p>
+              <button class="confirmdelete" onclick="showDeleteOptions(this)">Delete...</button>
+              <button class="canceldeletebookmark" onclick="hideDeleteOptions(this)">Cancel</button>
+              <form class="deletebookmark" method="post" action="deletebookmark">
+                <input type="hidden" name="url" value="{{.URL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CsrfToken}}">
+                <button class="deletebookmark">Delete!</button>
+              </form>
+            </span>
           </dd>
           </div>
         {{end}}
       </dl>
     </main>
+    <script>
+      function showDeleteOptions(el) {
+        if (el) {
+          const cancelbutton = el.parentElement.querySelector(".canceldeletebookmark");
+          const deleteBookmarkForm = el.parentElement.querySelector("form.deletebookmark");
+          if (cancelbutton && deleteBookmarkForm) {
+            cancelbutton.style.display = "inline";
+            deleteBookmarkForm.style.display = "inline";
+            el.style.display = "none";
+          }
+        }
+      }
+
+      function hideDeleteOptions(el) {
+        if (el) {
+          const deleteBookmarkButton = el.parentElement.querySelector("button.confirmdelete");
+          const deleteBookmarkForm = el.parentElement.querySelector("form.deletebookmark");
+          if (deleteBookmarkButton && deleteBookmarkForm) {
+            el.style.display = "none";
+            deleteBookmarkForm.style.display = "none";
+            deleteBookmarkButton.style.display = "inline";
+          }
+        }
+      }
+    </script>
   </body>
 </html>
 {{end}}

@@ -103,6 +103,7 @@ func runServer() {
 	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c) })
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
+	e.POST("/deletebookmark", func(c echo.Context) error { return deleteBookmark(db, c) })
 
 	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
 	e.Logger.Fatal(e.Start(":" + port))
@@ -232,6 +233,7 @@ type BookmarkSlice struct {
 	HasRight    bool
 	RightOffset int64
 	SearchQuery string
+	CsrfToken   string
 }
 
 type Bookmark struct {
@@ -373,7 +375,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset, searchQuery})
+		return c.Render(http.StatusOK, "bookmarks", BookmarkSlice{bookmarks, HasLeft, LeftOffset, HasRight, RightOffset, searchQuery, c.Get("csrf").(string)})
 	})
 }
 
@@ -396,6 +398,31 @@ func showAddBookmark(db *sql.DB, c echo.Context) error {
 			}
 		}
 		return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
+	})
+}
+
+func deleteBookmark(db *sql.DB, c echo.Context) error {
+	return withValidSession(c, func(userid int) error {
+		handleError := func(err error) error {
+			log.Println(err)
+			// TODO: add error toast or something based on URL parameter in redirect
+			return c.Redirect(http.StatusFound, "/bookmarks")
+		}
+		url := c.FormValue("url")
+		if url != "" {
+			existingBookmark, err := findExistingBookmark(db, url, userid)
+			if err != nil {
+				return handleError(err)
+			}
+			if existingBookmark == (Bookmark{}) {
+				return handleError(errors.New("bookmark not found"))
+			}
+			_, err = db.Exec("DELETE FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
+			if err != nil {
+				return handleError(err)
+			}
+		}
+		return c.Redirect(http.StatusFound, "/bookmarks")
 	})
 }
 
