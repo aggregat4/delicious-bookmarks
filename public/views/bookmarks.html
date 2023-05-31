@@ -126,7 +126,10 @@
             {{if .Tags}}
             <p>Tags: <span class="tags">{{highlight .Tags}}</span></p>
             {{end}}
-            <p><time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time></p>
+            <p>
+              <time datetime="{{.Created}}">Created: {{.Created.Format "2006-01-02"}}</time>
+              <a class="editbookmark" href="/addbookmark?url={{.URL}}">Edit</a>
+            </p>
           </dd>
           </div>
         {{end}}

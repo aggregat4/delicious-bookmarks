@@ -392,7 +392,7 @@ func showAddBookmark(db *sql.DB, c echo.Context) error {
 				return handleError(err)
 			}
 			if existingBookmark != (Bookmark{}) {
-				return c.Render(http.StatusOK, "addbookmark", existingBookmark)
+				return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: existingBookmark, CsrfToken: c.Get("csrf").(string)})
 			}
 		}
 		return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
