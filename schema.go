@@ -3,6 +3,8 @@ package main
 import (
 	"database/sql"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
@@ -34,7 +36,8 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 			return errors.New("the database already has this account but with a different password")
 		}
 	} else {
-		_, err := db.Exec("INSERT INTO users (username, password, last_update) VALUES (?, ?, -1)", initdbUsername, initdbPassword)
+		feedId := uuid.New().String()
+		_, err := db.Exec("INSERT INTO users (username, password, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, initdbPassword, feedId)
 		if err != nil {
 			return err
 		}
@@ -121,6 +124,30 @@ var migrations = []Migration{
 		END;
 		-- populate the bookmarks_fts table with the existing bookmarks when the bookmarks_fts table is empty
 		INSERT INTO bookmarks_fts(bookmarks_fts) VALUES('rebuild');
+		`,
+	},
+	// Adding the ability to mark bookmarks as "read later" and generate an RSS feed on them
+	{3,
+		`
+		-- 0 = no read later, 1 = read later
+		ALTER TABLE bookmarks ADD COLUMN readlater INTEGER NOT NULL DEFAULT 0;
+
+		-- Should be a UUID for generating a unique feed URL that is unauthenticated but unguessable
+		ALTER TABLE users ADD COLUMN feed_id TEXT;
+
+		-- Splitting out the read later bookmark contents into a separate table since it will be
+		-- a relatively small subset of all bookmarks and we don't want to bloat the bookmarks table
+		-- retrieval_status is 0 for no errors, 1 if an error occurred
+		CREATE TABLE IF NOT EXISTS read_later (
+		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		bookmark_id INTEGER NOT NULL,
+		retrieval_attempt_count INTEGER NOT NULL,
+		retrieval_status INTEGER NOT NULL,
+		retrieval_content TEXT,
+		FOREIGN KEY(user_id) REFERENCES users(id),
+		FOREIGN KEY(bookmark_id) REFERENCES bookmarks(id)
+		)
 		`,
 	},
 }

@@ -86,6 +86,11 @@
           Private
         </label>
 
+        <label>
+          <input type="checkbox" name="readlater" {{if .Bookmark.Readlater}}checked{{end}} />
+          Read Later
+        </label>
+
         <label>Tags
           <input type="text" name="tags" autocomplete="off" autocapitalize="off" value="{{.Bookmark.Tags}}" {{if .Bookmark.URL}}autofocus{{end}} />
         </label>

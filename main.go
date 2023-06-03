@@ -242,6 +242,7 @@ type Bookmark struct {
 	Description string
 	Tags        string
 	Private     bool
+	Readlater   bool
 	Created     time.Time
 	Updated     time.Time
 }
@@ -304,7 +305,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		if searchQuery != "" {
 			if direction == right {
 				sqlQuery = `
-				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.created, b.updated
+				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.readlater, b.created, b.updated
 				FROM bookmarks_fts bfts, bookmarks b
 				WHERE bfts.rowid = b.id
 				AND b.user_id = ?
@@ -314,7 +315,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 				LIMIT ?`
 			} else {
 				sqlQuery = `
-				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.created, b.updated
+				SELECT b.url, highlight(bookmarks_fts, 1, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 2, '{{mark}}', '{{endmark}}'), highlight(bookmarks_fts, 3, '{{mark}}', '{{endmark}}'), b.private, b.readlater, b.created, b.updated
 				FROM bookmarks_fts bfts, bookmarks b
 				WHERE bfts.rowid = b.id
 				AND b.user_id = ?
@@ -326,9 +327,9 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			rows, err = db.Query(sqlQuery, userid, offset, searchQuery, BOOKMARKS_PAGE_SIZE+1)
 		} else {
 			if direction == right {
-				sqlQuery = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
+				sqlQuery = "SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
 			} else {
-				sqlQuery = "SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
+				sqlQuery = "SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
 			}
 			rows, err = db.Query(sqlQuery, userid, offset, BOOKMARKS_PAGE_SIZE+1)
 		}
@@ -338,12 +339,12 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 		defer rows.Close()
 		for rows.Next() {
 			var url, title, description, tags sql.NullString
-			var createdInt, updatedInt, private int64
-			err = rows.Scan(&url, &title, &description, &tags, &private, &createdInt, &updatedInt)
+			var createdInt, updatedInt, private, readlater int64
+			err = rows.Scan(&url, &title, &description, &tags, &private, &readlater, &createdInt, &updatedInt)
 			if err != nil {
 				return handleError(err)
 			}
-			bookmarks = append(bookmarks, Bookmark{url.String, title.String, description.String, tags.String, private == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
+			bookmarks = append(bookmarks, Bookmark{url.String, title.String, description.String, tags.String, private == 1, readlater == 1, time.Unix(createdInt, 0), time.Unix(updatedInt, 0)})
 		}
 		moreResultsLeft := len(bookmarks) == (BOOKMARKS_PAGE_SIZE + 1)
 		if moreResultsLeft {
@@ -431,19 +432,19 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 		log.Println(err)
 		return err
 	}
-	rows, err := db.Query("SELECT url, title, description, tags, private, created, updated FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
+	rows, err := db.Query("SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
 	if err != nil {
 		return Bookmark{}, handleError(err)
 	}
 	defer rows.Close()
 	if rows.Next() {
 		var dbUrl, dbTitle, dbDescription, dbTags string
-		var dbCreated, dbUpdated, dbPrivate uint64
-		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbPrivate, &dbCreated, &dbUpdated)
+		var dbCreated, dbUpdated, dbPrivate, dbReadlater uint64
+		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbPrivate, dbReadlater, &dbCreated, &dbUpdated)
 		if err != nil {
 			return Bookmark{}, handleError(err)
 		}
-		return Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Private: dbPrivate == 1, Created: time.Unix(int64(dbCreated), 0), Updated: time.Unix(int64(dbUpdated), 0)}, nil
+		return Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Private: dbPrivate == 1, Readlater: dbReadlater == 1, Created: time.Unix(int64(dbCreated), 0), Updated: time.Unix(int64(dbUpdated), 0)}, nil
 	}
 	return Bookmark{}, nil
 }
@@ -466,11 +467,16 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		if private {
 			privateInt = 1
 		}
+		readlater := c.FormValue("readlater") == "on"
+		readlaterInt := 0
+		if readlater {
+			readlaterInt = 1
+		}
 		// we perform an upsert because the URL may already be stored and we just want to update the other fields
 		_, err := db.Exec(`
-			INSERT INTO bookmarks (user_id, url, title, description, tags, private, created, updated) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
-			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, updated = ?`, userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, time.Now().Unix())
+			INSERT INTO bookmarks (user_id, url, title, description, tags, private, readlater, created, updated) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, readlater = ?, updated = ?`, userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, readlaterInt, readlaterInt, time.Now().Unix())
 		if err != nil {
 			return handleError(err)
 		}
