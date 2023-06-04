@@ -432,7 +432,8 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 		log.Println(err)
 		return err
 	}
-	rows, err := db.Query("SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
+	rows, err := db.Query("SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND url = ?",
+		userid, url)
 	if err != nil {
 		return Bookmark{}, handleError(err)
 	}
@@ -440,7 +441,7 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (Bookmark, error) 
 	if rows.Next() {
 		var dbUrl, dbTitle, dbDescription, dbTags string
 		var dbCreated, dbUpdated, dbPrivate, dbReadlater uint64
-		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbPrivate, dbReadlater, &dbCreated, &dbUpdated)
+		err = rows.Scan(&dbUrl, &dbTitle, &dbDescription, &dbTags, &dbPrivate, &dbReadlater, &dbCreated, &dbUpdated)
 		if err != nil {
 			return Bookmark{}, handleError(err)
 		}
@@ -476,7 +477,9 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		_, err := db.Exec(`
 			INSERT INTO bookmarks (user_id, url, title, description, tags, private, readlater, created, updated) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, readlater = ?, updated = ?`, userid, url, title, description, tags, privateInt, time.Now().Unix(), time.Now().Unix(), title, description, tags, privateInt, readlaterInt, readlaterInt, time.Now().Unix())
+			ON CONFLICT(url) DO UPDATE SET title = ?, description = ?, tags = ?, private = ?, readlater = ?, updated = ?`,
+			userid, url, title, description, tags, privateInt, readlaterInt, time.Now().Unix(), time.Now().Unix(),
+			title, description, tags, privateInt, readlaterInt, time.Now().Unix())
 		if err != nil {
 			return handleError(err)
 		}
