@@ -1,6 +1,8 @@
-package main
+package importer
 
 import (
+	"aggregat4/gobookmarks/domain"
+	"aggregat4/gobookmarks/schema"
 	"encoding/json"
 	"errors"
 	"log"
@@ -29,7 +31,7 @@ func removeHtmlTags(s string) string {
 	return HtmlTagRegex.ReplaceAllString(s, "")
 }
 
-func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) error {
+func ImportBookmarks(importBookmarksJsonFile, importBookmarksUsername string) error {
 	file, err := os.Open(importBookmarksJsonFile)
 	if err != nil {
 		return err
@@ -41,9 +43,9 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	if err != nil {
 		return err
 	}
-	bookmarks := make([]Bookmark, 0)
+	bookmarks := make([]domain.Bookmark, 0)
 	for _, b := range pinboardBookmarks {
-		bookmark := Bookmark{
+		bookmark := domain.Bookmark{
 			URL:         b.Href,
 			Title:       b.Description,
 			Description: removeHtmlTags(b.Extended),
@@ -56,7 +58,7 @@ func importBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	}
 	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
 	// now import all the bookmarks in the database
-	db, err := initAndVerifyDb()
+	db, err := schema.InitAndVerifyDb()
 	if err != nil {
 		panic(err)
 	}

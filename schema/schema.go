@@ -1,4 +1,4 @@
-package main
+package schema
 
 import (
 	"database/sql"
@@ -7,7 +7,18 @@ import (
 	"github.com/google/uuid"
 )
 
-func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
+func InitAndVerifyDb() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite")
+	if err != nil {
+		return nil, err
+	}
+
+	err = MigrateSchema(db)
+
+	return db, err
+}
+
+func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
 	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite")
 
 	if err != nil {
@@ -16,7 +27,7 @@ func initDatabaseWithUser(initdbUsername, initdbPassword string) error {
 
 	defer db.Close()
 
-	migrateSchema(db)
+	MigrateSchema(db)
 
 	rows, err := db.Query("SELECT password FROM users WHERE id = 1 AND username = ?", initdbUsername)
 	if err != nil {
@@ -152,7 +163,7 @@ var migrations = []Migration{
 	},
 }
 
-func migrateSchema(db *sql.DB) error {
+func MigrateSchema(db *sql.DB) error {
 	println("Migrating schema")
 	exists, err := existsMigrationTable(db)
 	if err != nil {
