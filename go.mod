@@ -13,7 +13,7 @@ require (
 require (
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
-	github.com/go-shiori/go-readability v0.0.0-20230421032831-c66949dfc0ad // indirect
+	github.com/go-shiori/go-readability v0.0.0-20230421032831-c66949dfc0ad
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 )
 
