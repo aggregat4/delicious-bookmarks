@@ -136,6 +136,11 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 	}
 }
 
+type FeedCandidate struct {
+	bookmarkId int
+	userId     int
+}
+
 // Identifying new feed candidates means finding bookmarks marked with `readlater` in the last X
 // months that have not been added to the read_later table yet and adding them.
 func findNewFeedCandidates(db *sql.DB) {
@@ -155,6 +160,8 @@ func findNewFeedCandidates(db *sql.DB) {
 	}
 	defer rows.Close()
 
+	feedCandidates := make([]FeedCandidate, 0)
+
 	for rows.Next() {
 		var bookmarkId, userId int
 		err = rows.Scan(&bookmarkId, &userId)
@@ -163,14 +170,15 @@ func findNewFeedCandidates(db *sql.DB) {
 		}
 		log.Printf("Adding new candidate with id %d", bookmarkId)
 
-		err = addFeedCandidate(db, bookmarkId, userId)
+		feedCandidates = append(feedCandidates, FeedCandidate{bookmarkId, userId})
+	}
+	rows.Close()
+
+	for _, feedCandidate := range feedCandidates {
+		err = addFeedCandidate(db, feedCandidate.bookmarkId, feedCandidate.userId)
 		if err != nil {
 			panic(err)
 		}
-	}
-	err = rows.Err()
-	if err != nil {
-		panic(err)
 	}
 }
 
