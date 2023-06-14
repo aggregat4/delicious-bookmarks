@@ -72,11 +72,13 @@ func RunServer() {
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 	e.POST("/deletebookmark", func(c echo.Context) error { return deleteBookmark(db, c) })
 
-	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
-	e.Logger.Fatal(e.Start(":" + port))
-
+	log.Println("FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
 	quitChannel := make(chan struct{})
 	crawler.RunBookmarkCrawler(quitChannel, db)
+
+	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
+	e.Logger.Fatal(e.Start(":" + port))
+	// NO MORE CODE HERE, IT WILL NOT BE EXECUTED
 }
 
 func highlight(text string) string {

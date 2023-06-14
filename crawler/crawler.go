@@ -23,6 +23,7 @@ const DEFAULT_MONTHS_TO_ADD_TO_FEED = 3
 
 func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 	ticker := time.NewTicker(DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS * time.Second)
+	log.Println("Starting bookmark crawler")
 	// use a custom http client so we can set a timeout to make sure we don't hang indefinitely on foreign servers
 	downloadHttpClient := &http.Client{
 		Timeout: MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS * time.Second,
@@ -31,6 +32,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 		for {
 			select {
 			case <-ticker.C:
+				log.Println("Running bookmark crawler")
 				findNewFeedCandidates(db)
 				// TODO: remove read_later entries older than our cutoff so the feed does not grow unbounded
 				// pruneFeedCandidates(db)
@@ -48,11 +50,11 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 func downloadFeedCandidates(db *sql.DB, client *http.Client) {
 	rows, err := db.Query(
 		`
-        SELECT rl.id, b.url, retrieval_attempt_count
+        SELECT rl.id, b.url, rl.retrieval_attempt_count
         FROM bookmarks b, read_later rl
-        WHERE b.id = read_later.bookmark_id
-		AND retrieval_content is NULL
-        AND retrieval_attempt_count < ?
+        WHERE b.id = rl.bookmark_id
+		AND rl.retrieval_content is NULL
+        AND rl.retrieval_attempt_count < ?
         `,
 		MAX_CONTENT_DOWNLOAD_ATTEMPTS,
 	)
@@ -138,6 +140,7 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 // months that have not been added to the read_later table yet and adding them.
 func findNewFeedCandidates(db *sql.DB) {
 	log.Printf("Finding new feed candidates")
+	three_months_ago_unix_time := time.Now().AddDate(0, -DEFAULT_MONTHS_TO_ADD_TO_FEED, 0).Unix()
 	rows, err := db.Query(
 		`
 		SELECT b.id, b.user_id
@@ -145,8 +148,8 @@ func findNewFeedCandidates(db *sql.DB) {
 		WHERE b.readlater = 1 
 		AND b.created > ? 
 		AND rl.id IS NULL
-		`,
-		time.Now().AddDate(0, -DEFAULT_MONTHS_TO_ADD_TO_FEED, 0))
+		`, three_months_ago_unix_time,
+	)
 	if err != nil {
 		panic(err)
 	}
