@@ -16,6 +16,7 @@ import (
 const MAX_CONTENT_DOWNLOAD_ATTEMPTS = 3
 const MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS = 20
 const MAX_CONTENT_DOWNLOAD_SIZE_BYTES = 2 * 1024 * 1024
+const MAX_BOOKMARKS_TO_DOWNLOAD = 20
 
 // const DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS = 5 * 60
 const DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS = 5
@@ -36,7 +37,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 				findNewFeedCandidates(db)
 				// TODO: remove read_later entries older than our cutoff so the feed does not grow unbounded
 				// pruneFeedCandidates(db)
-				downloadFeedCandidates(db, downloadHttpClient)
+				downloadNewReadLaterItems(db, downloadHttpClient)
 			case <-quitChannel:
 				ticker.Stop()
 				return
@@ -45,9 +46,16 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 	}()
 }
 
-// Download all the feed candidates that are not downladed yet and where retrieval_attempt_count is
-// not more than our threshold.
-func downloadFeedCandidates(db *sql.DB, client *http.Client) {
+type ReadLaterBookmark struct {
+	Id           uint64
+	Url          string
+	AttemptCount int
+}
+
+// Download all the bookmarks that are not downladed yet and where retrieval_attempt_count is
+// not more than our threshold. We also limit the amount of bookmarks we attempt to download so
+// that we download in smaller batches and not overwhelm the system
+func downloadNewReadLaterItems(db *sql.DB, client *http.Client) {
 	rows, err := db.Query(
 		`
         SELECT rl.id, b.url, rl.retrieval_attempt_count
@@ -55,32 +63,49 @@ func downloadFeedCandidates(db *sql.DB, client *http.Client) {
         WHERE b.id = rl.bookmark_id
 		AND rl.retrieval_content is NULL
         AND rl.retrieval_attempt_count < ?
+		LIMIT ?
         `,
-		MAX_CONTENT_DOWNLOAD_ATTEMPTS,
+		MAX_CONTENT_DOWNLOAD_ATTEMPTS, MAX_BOOKMARKS_TO_DOWNLOAD,
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer rows.Close()
 
+	bookmarksToDownload := make([]ReadLaterBookmark, 0)
+
 	for rows.Next() {
-		var readLaterId, attemptCount uint64
+		var readLaterId uint64
+		var attemptCount int
 		var url string
 		err := rows.Scan(&readLaterId, &url, &attemptCount)
 		if err != nil {
 			panic(err)
 		}
 
-		content, err := downloadContent(url, client)
+		bookmarksToDownload = append(bookmarksToDownload, ReadLaterBookmark{
+			Id:           readLaterId,
+			Url:          url,
+			AttemptCount: attemptCount,
+		})
+
+	}
+
+	rows.Close()
+
+	for _, bookmark := range bookmarksToDownload {
+		content, err := downloadContent(bookmark.Url, client)
 
 		if err != nil {
+			// TODO: figure out what go logging semantics are since I need this info to debug
+			log.Printf("Error downloading content for url '%s' and marking it as failed to download: %s", bookmark.Url, err)
 			_, err = db.Exec(
 				`
 				UPDATE read_later
 				SET retrieval_status = 1, retrieval_attempt_count = ?
 				WHERE id = ?
 				`,
-				attemptCount+1, readLaterId,
+				bookmark.AttemptCount+1, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -92,7 +117,7 @@ func downloadFeedCandidates(db *sql.DB, client *http.Client) {
 				SET retrieval_status = 0, retrieval_content = ?, retrieval_attempt_count = ?
 				WHERE id = ?
 				`,
-				content, attemptCount+1, readLaterId,
+				content, bookmark.AttemptCount+1, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -124,11 +149,13 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 	content := string(bodyBytes)
 
 	realUrl, err := url.Parse(urlString)
-	if err != nil {
+	if err == nil {
 		article, err := readability.FromReader(strings.NewReader(content), realUrl)
 		if err != nil {
 			return "", fmt.Errorf("error parsing content from %s: %w", urlString, err)
 		} else {
+			log.Println(article.Content)
+			log.Println(article.TextContent)
 			return article.Content, nil
 		}
 	} else {
