@@ -37,8 +37,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 			case <-ticker.C:
 				log.Println("Running bookmark crawler")
 				findNewFeedCandidates(db)
-				// TODO: remove read_later entries older than our cutoff so the feed does not grow unbounded
-				// pruneFeedCandidates(db)
+				pruneFeedCandidates(db)
 				downloadNewReadLaterItems(db, downloadHttpClient, sanitisationPolicy)
 			case <-quitChannel:
 				ticker.Stop()
@@ -46,6 +45,24 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 			}
 		}
 	}()
+}
+
+func pruneFeedCandidates(db *sql.DB) {
+	log.Println("Pruning feed candidates")
+	_, err := db.Exec(
+		`
+		DELETE FROM read_later
+		WHERE bookmark_id IN (
+			SELECT b.id
+			FROM bookmarks b
+			WHERE b.readlater = 1
+			AND b.created < ? 	
+		)
+		`, calculateFeedCutoffDate(),
+	)
+	if err != nil {
+		panic(err)
+	}
 }
 
 type ReadLaterBookmark struct {
@@ -177,7 +194,7 @@ type FeedCandidate struct {
 // months that have not been added to the read_later table yet and adding them.
 func findNewFeedCandidates(db *sql.DB) {
 	log.Printf("Finding new feed candidates")
-	three_months_ago_unix_time := time.Now().AddDate(0, -DEFAULT_MONTHS_TO_ADD_TO_FEED, 0).Unix()
+	feed_cutoff_date := calculateFeedCutoffDate()
 	rows, err := db.Query(
 		`
 		SELECT b.id, b.user_id
@@ -185,7 +202,7 @@ func findNewFeedCandidates(db *sql.DB) {
 		WHERE b.readlater = 1 
 		AND b.created > ? 
 		AND rl.id IS NULL
-		`, three_months_ago_unix_time,
+		`, feed_cutoff_date,
 	)
 	if err != nil {
 		panic(err)
@@ -212,6 +229,10 @@ func findNewFeedCandidates(db *sql.DB) {
 			panic(err)
 		}
 	}
+}
+
+func calculateFeedCutoffDate() int64 {
+	return time.Now().AddDate(0, -DEFAULT_MONTHS_TO_ADD_TO_FEED, 0).Unix()
 }
 
 func addFeedCandidate(db *sql.DB, bookmarkId int, userId int) error {
