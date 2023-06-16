@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-shiori/go-readability"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 const MAX_CONTENT_DOWNLOAD_ATTEMPTS = 3
@@ -29,6 +30,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 	downloadHttpClient := &http.Client{
 		Timeout: MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS * time.Second,
 	}
+	sanitisationPolicy := bluemonday.UGCPolicy()
 	go func() {
 		for {
 			select {
@@ -37,7 +39,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 				findNewFeedCandidates(db)
 				// TODO: remove read_later entries older than our cutoff so the feed does not grow unbounded
 				// pruneFeedCandidates(db)
-				downloadNewReadLaterItems(db, downloadHttpClient)
+				downloadNewReadLaterItems(db, downloadHttpClient, sanitisationPolicy)
 			case <-quitChannel:
 				ticker.Stop()
 				return
@@ -55,7 +57,7 @@ type ReadLaterBookmark struct {
 // Download all the bookmarks that are not downladed yet and where retrieval_attempt_count is
 // not more than our threshold. We also limit the amount of bookmarks we attempt to download so
 // that we download in smaller batches and not overwhelm the system
-func downloadNewReadLaterItems(db *sql.DB, client *http.Client) {
+func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPolicy *bluemonday.Policy) {
 	rows, err := db.Query(
 		`
         SELECT rl.id, b.url, rl.retrieval_attempt_count
@@ -111,13 +113,16 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client) {
 				panic(err)
 			}
 		} else {
+			// Sanitise the content with bluemonday just to be sure and to perhaps have some saner content
+			sanitised := sanitisationPolicy.Sanitize(content)
+			// log.Println(sanitised)
 			_, err = db.Exec(
 				`
 				UPDATE read_later
 				SET retrieval_status = 0, retrieval_content = ?, retrieval_attempt_count = ?
 				WHERE id = ?
 				`,
-				content, bookmark.AttemptCount+1, bookmark.Id,
+				sanitised, bookmark.AttemptCount+1, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -154,8 +159,8 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("error parsing content from %s: %w", urlString, err)
 		} else {
-			log.Println(article.Content)
-			log.Println(article.TextContent)
+			// log.Println(article.Content)
+			// log.Println(article.TextContent)
 			return article.Content, nil
 		}
 	} else {
