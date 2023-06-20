@@ -4,12 +4,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 
 	"aggregat4/gobookmarks/crypto"
+	"aggregat4/gobookmarks/domain"
 	"aggregat4/gobookmarks/importer"
 	"aggregat4/gobookmarks/schema"
 	"aggregat4/gobookmarks/server"
 
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -46,6 +50,39 @@ func main() {
 			log.Fatalf("Error importing bookmarks: %s", err)
 		}
 	} else {
-		server.RunServer()
+		err := godotenv.Load()
+		if err != nil {
+			panic(fmt.Errorf("Error loading .env file: %s", err))
+		}
+		server.RunServer(domain.Configuration{
+			MaxContentDownloadAttempts:       getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
+			MaxContentDownloadTimeoutSeconds: getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS", 20),
+			MaxContentDownloadSizeBytes:      getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_SIZE_BYTES", 2*1024*1024),
+			MaxBookmarksToDownload:           getIntFromEnv("DEFAULT_MAX_BOOKMARKS_TO_DOWNLOAD", 20),
+			FeedCrawlingIntervalSeconds:      getIntFromEnv("DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS", 5*60),
+			MonthsToAddToFeed:                getIntFromEnv("DEFAULT_MONTHS_TO_ADD_TO_FEED", 3),
+			BookmarksPageSize:                getIntFromEnv("DEFAULT_BOOKMARKS_PAGE_SIZE", 50),
+			DeliciousBookmarksBaseUrl:        requireStringFromEnv("DELICIOUS_BOOKMARKS_BASE_URL"),
+		})
 	}
+}
+
+func requireStringFromEnv(s string) string {
+	value := os.Getenv(s)
+	if value == "" {
+		panic(fmt.Errorf("Env variable %s is required", s))
+	}
+	return value
+}
+
+func getIntFromEnv(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		panic(fmt.Errorf("Error parsing env variable %s: %s", key, err))
+	}
+	return intValue
 }

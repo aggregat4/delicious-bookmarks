@@ -155,9 +155,11 @@ var migrations = []Migration{
 		bookmark_id INTEGER NOT NULL,
 		retrieval_attempt_count INTEGER NOT NULL,
 		retrieval_status INTEGER NOT NULL,
-		retrieval_content TEXT,
+		retrieval_time INTEGER,
+		title TEXT,
+		content TEXT,
 		FOREIGN KEY(user_id) REFERENCES users(id),
-		FOREIGN KEY(bookmark_id) REFERENCES bookmarks(id)
+		FOREIGN KEY(bookmark_id) REFERENCES bookmarks(id) ON DELETE CASCADE
 		)
 		`,
 	},

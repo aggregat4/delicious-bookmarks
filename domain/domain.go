@@ -22,3 +22,22 @@ type Bookmark struct {
 	Created     time.Time
 	Updated     time.Time
 }
+
+type ReadLaterBookmarkWithContent struct {
+	Url                   string
+	SuccessfullyRetrieved bool
+	Title                 string
+	Content               string
+	RetrievalTime         time.Time
+}
+
+type Configuration struct {
+	MaxContentDownloadAttempts       int
+	MaxContentDownloadTimeoutSeconds int
+	MaxContentDownloadSizeBytes      int
+	MaxBookmarksToDownload           int
+	FeedCrawlingIntervalSeconds      int
+	MonthsToAddToFeed                int
+	BookmarksPageSize                int
+	DeliciousBookmarksBaseUrl        string
+}

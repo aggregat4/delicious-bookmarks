@@ -11,6 +11,11 @@ require (
 )
 
 require (
+	github.com/gorilla/feeds v1.1.1 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+)
+
+require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.24

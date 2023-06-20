@@ -20,6 +20,7 @@ import (
 	"aggregat4/gobookmarks/schema"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/feeds"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -36,7 +37,7 @@ func GetOrDefault(value string, defaultValue string) string {
 	return defaultValue
 }
 
-func RunServer() {
+func RunServer(config domain.Configuration) {
 	db, err := schema.InitAndVerifyDb()
 	if err != nil {
 		panic(err)
@@ -67,14 +68,14 @@ func RunServer() {
 
 	e.GET("/login", func(c echo.Context) error { return showLogin(c) })
 	e.POST("/login", func(c echo.Context) error { return login(db, c) })
-	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c) })
+	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c, config) })
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 	e.POST("/deletebookmark", func(c echo.Context) error { return deleteBookmark(db, c) })
+	e.GET("/feeds/:id", func(c echo.Context) error { return showFeed(db, c, config) })
 
-	log.Println("FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
 	quitChannel := make(chan struct{})
-	crawler.RunBookmarkCrawler(quitChannel, db)
+	crawler.RunBookmarkCrawler(quitChannel, db, config)
 
 	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
 	e.Logger.Fatal(e.Start(":" + port))
@@ -188,9 +189,7 @@ const (
 	right int = 1
 )
 
-const BOOKMARKS_PAGE_SIZE = 50
-
-func showBookmarks(db *sql.DB, c echo.Context) error {
+func showBookmarks(db *sql.DB, c echo.Context, config domain.Configuration) error {
 	return withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
@@ -255,14 +254,14 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 				ORDER BY b.created ASC
 				LIMIT ?`
 			}
-			rows, err = db.Query(sqlQuery, userid, offset, searchQuery, BOOKMARKS_PAGE_SIZE+1)
+			rows, err = db.Query(sqlQuery, userid, offset, searchQuery, config.BookmarksPageSize+1)
 		} else {
 			if direction == right {
 				sqlQuery = "SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND created < ? ORDER BY created DESC LIMIT ?"
 			} else {
 				sqlQuery = "SELECT url, title, description, tags, private, readlater, created, updated FROM bookmarks WHERE user_id = ? AND created > ? ORDER BY created ASC LIMIT ?"
 			}
-			rows, err = db.Query(sqlQuery, userid, offset, BOOKMARKS_PAGE_SIZE+1)
+			rows, err = db.Query(sqlQuery, userid, offset, config.BookmarksPageSize+1)
 		}
 		if err != nil {
 			return handleError(err)
@@ -277,7 +276,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 			bookmarks = append(bookmarks, domain.Bookmark{URL: url.String, Title: title.String, Description: description.String, Tags: tags.String, Private: private == 1, Readlater: readlater == 1, Created: time.Unix(createdInt, 0), Updated: time.Unix(updatedInt, 0)})
 		}
-		moreResultsLeft := len(bookmarks) == (BOOKMARKS_PAGE_SIZE + 1)
+		moreResultsLeft := len(bookmarks) == (config.BookmarksPageSize + 1)
 		if moreResultsLeft {
 			bookmarks = bookmarks[:len(bookmarks)-1]
 		}
@@ -289,7 +288,7 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			}
 		}
 		var HasLeft = true
-		if /*!(direction == right && offset != 0 && len(bookmarks) == BOOKMARKS_PAGE_SIZE) && */ offset == math.MaxInt64 || (direction == left && !moreResultsLeft) {
+		if /*!(direction == right && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == math.MaxInt64 || (direction == left && !moreResultsLeft) {
 			HasLeft = false
 		}
 		var LeftOffset int64 = 0
@@ -297,12 +296,12 @@ func showBookmarks(db *sql.DB, c echo.Context) error {
 			LeftOffset = bookmarks[0].Created.Unix()
 		}
 		var HasRight = true
-		if /* !(direction == left && offset != 0 && len(bookmarks) == BOOKMARKS_PAGE_SIZE) && */ offset == 0 || (direction == right && !moreResultsLeft) {
+		if /* !(direction == left && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == 0 || (direction == right && !moreResultsLeft) {
 			HasRight = false
 		}
 		var RightOffset int64 = math.MaxInt64
-		if len(bookmarks) >= BOOKMARKS_PAGE_SIZE {
-			RightOffset = bookmarks[BOOKMARKS_PAGE_SIZE-1].Created.Unix()
+		if len(bookmarks) >= config.BookmarksPageSize {
+			RightOffset = bookmarks[config.BookmarksPageSize-1].Created.Unix()
 		}
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
@@ -342,14 +341,11 @@ func deleteBookmark(db *sql.DB, c echo.Context) error {
 		}
 		url := c.FormValue("url")
 		if url != "" {
-			existingBookmark, err := findExistingBookmark(db, url, userid)
+			id, err := findExistingBookmarkId(db, url, userid)
 			if err != nil {
 				return handleError(err)
 			}
-			if existingBookmark == (domain.Bookmark{}) {
-				return handleError(errors.New("bookmark not found"))
-			}
-			_, err = db.Exec("DELETE FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
+			_, err = db.Exec("DELETE FROM bookmarks WHERE id = ?", id)
 			if err != nil {
 				return handleError(err)
 			}
@@ -379,6 +375,23 @@ func findExistingBookmark(db *sql.DB, url string, userid int) (domain.Bookmark, 
 		return domain.Bookmark{URL: dbUrl, Title: dbTitle, Description: dbDescription, Tags: dbTags, Private: dbPrivate == 1, Readlater: dbReadlater == 1, Created: time.Unix(int64(dbCreated), 0), Updated: time.Unix(int64(dbUpdated), 0)}, nil
 	}
 	return domain.Bookmark{}, nil
+}
+
+func findExistingBookmarkId(db *sql.DB, url string, userid int) (int64, error) {
+	rows, err := db.Query("SELECT id FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
+	if err != nil {
+		return -1, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var id int64
+		err = rows.Scan(&id)
+		if err != nil {
+			return -1, err
+		}
+		return id, nil
+	}
+	return -1, errors.New("bookmark not found")
 }
 
 func addBookmark(db *sql.DB, c echo.Context) error {
@@ -420,6 +433,106 @@ func addBookmark(db *sql.DB, c echo.Context) error {
 		}
 		return c.Redirect(http.StatusFound, "/bookmarks")
 	})
+}
+
+func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
+	feedId := c.Param("id")
+	if feedId == "" {
+		return c.String(http.StatusBadRequest, "feed id is required")
+	}
+	userId, err := findUserIdForFeedId(db, feedId)
+	if err != nil {
+		log.Println(err)
+		// this is not entirely correct, we are returning 404 for all errors but we may also
+		// get a random database error and we do not cleanly distinguish between those and not finding the I
+		return c.String(http.StatusNotFound, "feed with id "+feedId+" not found")
+	}
+	readLaterBookmarks, err := findReadLaterBookmarksWithContent(db, userId, config.MaxContentDownloadAttempts)
+	if err != nil {
+		log.Println(err)
+		return c.String(http.StatusInternalServerError, "error retrieving read later bookmarks")
+	}
+	feed := &feeds.Feed{
+		Title:       "Delicious Read Later Bookmarks",
+		Link:        &feeds.Link{Href: config.DeliciousBookmarksBaseUrl + "/feeds/" + feedId},
+		Description: "RSS feed generated of all your delicious bookmarks marked as read later.",
+		Created:     time.Now(),
+	}
+
+	for _, readLaterBookmark := range readLaterBookmarks {
+		if readLaterBookmark.SuccessfullyRetrieved {
+			item := &feeds.Item{
+				Title:   readLaterBookmark.Title,
+				Link:    &feeds.Link{Href: readLaterBookmark.Url},
+				Content: readLaterBookmark.Content,
+				Id:      readLaterBookmark.Url + "#" + strconv.FormatInt(readLaterBookmark.RetrievalTime.Unix(), 10),
+				// Description: "This is the first item in my RSS feed",
+				// Author:  &feeds.Author{Name: "John Doe", Email: "johndoe@example.com"},
+				Created: time.Now(),
+			}
+			feed.Add(item)
+		} else {
+			// TODO: implement
+		}
+	}
+
+	rss, err := feed.ToRss()
+	if err != nil {
+		log.Fatal(err)
+	}
+	c.Response().Header().Set("Content-Type", "application/rss+xml")
+	return c.String(http.StatusOK, rss)
+}
+
+func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAttempts int) ([]domain.ReadLaterBookmarkWithContent, error) {
+	rows, err := db.Query(
+		`
+		SELECT b.url, rl.retrieval_status, rl.retrieval_time, rl.title, rl.content
+		FROM read_later rl, bookmarks b
+		WHERE rl.user_id = ?
+		AND rl.bookmark_id = b.id
+		AND (rl.retrieval_status = 0 OR rl.retrieval_attempt_count >= ?)		
+		`, userId, maxDownloadAttempts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []domain.ReadLaterBookmarkWithContent
+	for rows.Next() {
+		var url string
+		var retrievalStatus int
+		var retrievalTime int64
+		var title, content string
+		err = rows.Scan(&url, &retrievalStatus, &retrievalTime, &title, &content)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, domain.ReadLaterBookmarkWithContent{
+			Url:                   url,
+			SuccessfullyRetrieved: retrievalStatus == 0,
+			Title:                 title,
+			Content:               content,
+			RetrievalTime:         time.Unix(retrievalTime, 0),
+		})
+	}
+	return result, nil
+}
+
+func findUserIdForFeedId(db *sql.DB, feedId string) (string, error) {
+	rows, err := db.Query("SELECT id FROM users WHERE feed_id = ?", feedId)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var userId string
+		err = rows.Scan(&userId)
+		if err != nil {
+			return "", err
+		}
+		return userId, nil
+	}
+	return "", errors.New("feed not found")
 }
 
 type Template struct {

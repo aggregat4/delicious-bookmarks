@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"aggregat4/gobookmarks/domain"
 	"database/sql"
 	"fmt"
 	"io"
@@ -14,21 +15,12 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 )
 
-const MAX_CONTENT_DOWNLOAD_ATTEMPTS = 3
-const MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS = 20
-const MAX_CONTENT_DOWNLOAD_SIZE_BYTES = 2 * 1024 * 1024
-const MAX_BOOKMARKS_TO_DOWNLOAD = 20
-
-// const DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS = 5 * 60
-const DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS = 5
-const DEFAULT_MONTHS_TO_ADD_TO_FEED = 3
-
-func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
-	ticker := time.NewTicker(DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS * time.Second)
+func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB, config domain.Configuration) {
+	ticker := time.NewTicker(time.Duration(config.FeedCrawlingIntervalSeconds) * time.Second)
 	log.Println("Starting bookmark crawler")
 	// use a custom http client so we can set a timeout to make sure we don't hang indefinitely on foreign servers
 	downloadHttpClient := &http.Client{
-		Timeout: MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS * time.Second,
+		Timeout: time.Duration(config.MaxContentDownloadTimeoutSeconds) * time.Second,
 	}
 	sanitisationPolicy := bluemonday.UGCPolicy()
 	go func() {
@@ -36,9 +28,9 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 			select {
 			case <-ticker.C:
 				log.Println("Running bookmark crawler")
-				findNewFeedCandidates(db)
-				pruneFeedCandidates(db)
-				downloadNewReadLaterItems(db, downloadHttpClient, sanitisationPolicy)
+				findNewFeedCandidates(db, config.MonthsToAddToFeed)
+				pruneFeedCandidates(db, config.MonthsToAddToFeed)
+				downloadNewReadLaterItems(db, downloadHttpClient, sanitisationPolicy, config)
 			case <-quitChannel:
 				ticker.Stop()
 				return
@@ -47,7 +39,7 @@ func RunBookmarkCrawler(quitChannel <-chan struct{}, db *sql.DB) {
 	}()
 }
 
-func pruneFeedCandidates(db *sql.DB) {
+func pruneFeedCandidates(db *sql.DB, monthsToAddToFeed int) {
 	log.Println("Pruning feed candidates")
 	_, err := db.Exec(
 		`
@@ -58,7 +50,7 @@ func pruneFeedCandidates(db *sql.DB) {
 			WHERE b.readlater = 1
 			AND b.created < ? 	
 		)
-		`, calculateFeedCutoffDate(),
+		`, calculateFeedCutoffDate(monthsToAddToFeed),
 	)
 	if err != nil {
 		panic(err)
@@ -74,17 +66,17 @@ type ReadLaterBookmark struct {
 // Download all the bookmarks that are not downladed yet and where retrieval_attempt_count is
 // not more than our threshold. We also limit the amount of bookmarks we attempt to download so
 // that we download in smaller batches and not overwhelm the system
-func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPolicy *bluemonday.Policy) {
+func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPolicy *bluemonday.Policy, config domain.Configuration) {
 	rows, err := db.Query(
 		`
         SELECT rl.id, b.url, rl.retrieval_attempt_count
         FROM bookmarks b, read_later rl
         WHERE b.id = rl.bookmark_id
-		AND rl.retrieval_content is NULL
+		AND rl.content is NULL
         AND rl.retrieval_attempt_count < ?
 		LIMIT ?
         `,
-		MAX_CONTENT_DOWNLOAD_ATTEMPTS, MAX_BOOKMARKS_TO_DOWNLOAD,
+		config.MaxContentDownloadAttempts, config.MaxBookmarksToDownload, // MAX_CONTENT_DOWNLOAD_ATTEMPTS, MAX_BOOKMARKS_TO_DOWNLOAD,
 	)
 	if err != nil {
 		panic(err)
@@ -101,19 +93,17 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 		if err != nil {
 			panic(err)
 		}
-
 		bookmarksToDownload = append(bookmarksToDownload, ReadLaterBookmark{
 			Id:           readLaterId,
 			Url:          url,
 			AttemptCount: attemptCount,
 		})
-
 	}
 
 	rows.Close()
 
 	for _, bookmark := range bookmarksToDownload {
-		content, err := downloadContent(bookmark.Url, client)
+		title, content, err := downloadContent(bookmark.Url, client, config.MaxContentDownloadSizeBytes)
 
 		if err != nil {
 			// TODO: figure out what go logging semantics are since I need this info to debug
@@ -136,10 +126,10 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 			_, err = db.Exec(
 				`
 				UPDATE read_later
-				SET retrieval_status = 0, retrieval_content = ?, retrieval_attempt_count = ?
+				SET retrieval_status = 0, retrieval_time = ?, title = ?, content = ?, retrieval_attempt_count = ?
 				WHERE id = ?
 				`,
-				sanitised, bookmark.AttemptCount+1, bookmark.Id,
+				time.Now().Unix(), title, sanitised, bookmark.AttemptCount+1, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -148,7 +138,7 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 	}
 }
 
-func downloadContent(urlString string, client *http.Client) (string, error) {
+func downloadContent(urlString string, client *http.Client, maxContentDownloadSizeBytes int) (string, string, error) {
 	log.Printf("Downloading content for url %s", urlString)
 
 	req, err := http.NewRequest("GET", urlString, nil)
@@ -162,10 +152,10 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	limitReader := io.LimitReader(resp.Body, MAX_CONTENT_DOWNLOAD_SIZE_BYTES)
+	limitReader := io.LimitReader(resp.Body, int64(maxContentDownloadSizeBytes))
 	bodyBytes, err := io.ReadAll(limitReader)
 	if err != nil {
-		return "", fmt.Errorf("error reading response body from %s: %w", urlString, err)
+		return "", "", fmt.Errorf("error reading response body from %s: %w", urlString, err)
 	}
 
 	content := string(bodyBytes)
@@ -174,14 +164,14 @@ func downloadContent(urlString string, client *http.Client) (string, error) {
 	if err == nil {
 		article, err := readability.FromReader(strings.NewReader(content), realUrl)
 		if err != nil {
-			return "", fmt.Errorf("error parsing content from %s: %w", urlString, err)
+			return "", "", fmt.Errorf("error parsing content from %s: %w", urlString, err)
 		} else {
 			// log.Println(article.Content)
 			// log.Println(article.TextContent)
-			return article.Content, nil
+			return article.Title, article.Content, nil
 		}
 	} else {
-		return "", err
+		return "", "", err
 	}
 }
 
@@ -192,9 +182,9 @@ type FeedCandidate struct {
 
 // Identifying new feed candidates means finding bookmarks marked with `readlater` in the last X
 // months that have not been added to the read_later table yet and adding them.
-func findNewFeedCandidates(db *sql.DB) {
+func findNewFeedCandidates(db *sql.DB, defaultMonthsToAddToFeed int) {
 	log.Printf("Finding new feed candidates")
-	feed_cutoff_date := calculateFeedCutoffDate()
+	feed_cutoff_date := calculateFeedCutoffDate(defaultMonthsToAddToFeed)
 	rows, err := db.Query(
 		`
 		SELECT b.id, b.user_id
@@ -231,8 +221,8 @@ func findNewFeedCandidates(db *sql.DB) {
 	}
 }
 
-func calculateFeedCutoffDate() int64 {
-	return time.Now().AddDate(0, -DEFAULT_MONTHS_TO_ADD_TO_FEED, 0).Unix()
+func calculateFeedCutoffDate(monthsToAddToFeed int) int64 {
+	return time.Now().AddDate(0, -monthsToAddToFeed, 0).Unix()
 }
 
 func addFeedCandidate(db *sql.DB, bookmarkId int, userId int) error {
