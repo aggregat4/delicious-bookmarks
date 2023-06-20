@@ -2,3 +2,4 @@ gobookmarks
 *.sqlite
 tmp/
 .vscode/
+.env
