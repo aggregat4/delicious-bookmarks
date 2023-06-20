@@ -106,4 +106,4 @@ One requirement of the design was that the addbookmark page was easily invokable
 
 ## TODO
 
-- implement read later functionality based on a `toread` tag and automatically generating an rss feed from these items and hiding them in the main ui (?)
+- Figure out how to make cascade on delete work for bookmarks and read_later records
