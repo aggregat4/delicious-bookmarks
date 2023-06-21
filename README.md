@@ -106,4 +106,4 @@ One requirement of the design was that the addbookmark page was easily invokable
 
 ## TODO
 
-- Figure out how to make cascade on delete work for bookmarks and read_later records
+- Use If-Modified-Since cache checks on the feed generation
