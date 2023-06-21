@@ -304,7 +304,7 @@ func showBookmarks(db *sql.DB, c echo.Context, config domain.Configuration) erro
 			RightOffset = bookmarks[config.BookmarksPageSize-1].Created.Unix()
 		}
 
-		feedId, err := getFeedIdForUser(db, userid)
+		feedId, err := getOrCreateFeedIdForUser(db, userid)
 		if err != nil {
 			return handleError(err)
 		}
@@ -323,13 +323,31 @@ func showBookmarks(db *sql.DB, c echo.Context, config domain.Configuration) erro
 	})
 }
 
+func getOrCreateFeedIdForUser(db *sql.DB, userid int) (string, error) {
+	feedId, err := getFeedIdForUser(db, userid)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			return "", err
+		}
+		feedId = uuid.New().String()
+		_, err = db.Exec("UPDATE users SET feed_id = ? WHERE id = ?", feedId, userid)
+		if err != nil {
+			return "", err
+		}
+	}
+	return feedId, nil
+}
+
 func getFeedIdForUser(db *sql.DB, userid int) (string, error) {
-	var feedId string
+	var feedId sql.NullString
 	err := db.QueryRow("SELECT feed_id FROM users WHERE id = ?", userid).Scan(&feedId)
 	if err != nil {
 		return "", err
 	}
-	return feedId, nil
+	if feedId.Valid {
+		return feedId.String, nil
+	}
+	return "", sql.ErrNoRows
 }
 
 func showAddBookmark(db *sql.DB, c echo.Context) error {
