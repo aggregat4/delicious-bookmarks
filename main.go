@@ -52,16 +52,16 @@ func main() {
 	} else {
 		err := godotenv.Load()
 		if err != nil {
-			panic(fmt.Errorf("Error loading .env file: %s", err))
+			panic(fmt.Errorf("error loading .env file: %s", err))
 		}
 		server.RunServer(domain.Configuration{
-			MaxContentDownloadAttempts:       getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
-			MaxContentDownloadTimeoutSeconds: getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS", 20),
-			MaxContentDownloadSizeBytes:      getIntFromEnv("DEFAULT_MAX_CONTENT_DOWNLOAD_SIZE_BYTES", 2*1024*1024),
-			MaxBookmarksToDownload:           getIntFromEnv("DEFAULT_MAX_BOOKMARKS_TO_DOWNLOAD", 20),
-			FeedCrawlingIntervalSeconds:      getIntFromEnv("DEFAULT_FEED_CRAWLING_INTERVAL_SECONDS", 5*60),
-			MonthsToAddToFeed:                getIntFromEnv("DEFAULT_MONTHS_TO_ADD_TO_FEED", 3),
-			BookmarksPageSize:                getIntFromEnv("DEFAULT_BOOKMARKS_PAGE_SIZE", 50),
+			MaxContentDownloadAttempts:       getIntFromEnv("MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
+			MaxContentDownloadTimeoutSeconds: getIntFromEnv("MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS", 20),
+			MaxContentDownloadSizeBytes:      getIntFromEnv("MAX_CONTENT_DOWNLOAD_SIZE_BYTES", 2*1024*1024),
+			MaxBookmarksToDownload:           getIntFromEnv("MAX_BOOKMARKS_TO_DOWNLOAD", 20),
+			FeedCrawlingIntervalSeconds:      getIntFromEnv("FEED_CRAWLING_INTERVAL_SECONDS", 5*60),
+			MonthsToAddToFeed:                getIntFromEnv("MONTHS_TO_ADD_TO_FEED", 6),
+			BookmarksPageSize:                getIntFromEnv("BOOKMARKS_PAGE_SIZE", 50),
 			DeliciousBookmarksBaseUrl:        requireStringFromEnv("DELICIOUS_BOOKMARKS_BASE_URL"),
 		})
 	}
@@ -70,7 +70,7 @@ func main() {
 func requireStringFromEnv(s string) string {
 	value := os.Getenv(s)
 	if value == "" {
-		panic(fmt.Errorf("Env variable %s is required", s))
+		panic(fmt.Errorf("env variable %s is required", s))
 	}
 	return value
 }
@@ -82,7 +82,7 @@ func getIntFromEnv(key string, defaultValue int) int {
 	}
 	intValue, err := strconv.Atoi(value)
 	if err != nil {
-		panic(fmt.Errorf("Error parsing env variable %s: %s", key, err))
+		panic(fmt.Errorf("error parsing env variable %s: %s", key, err))
 	}
 	return intValue
 }
