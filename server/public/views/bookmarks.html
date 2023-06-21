@@ -108,6 +108,7 @@
           {{else}}
           <a role="link" aria-disabled="true">Previous</a>
           {{end}}
+          ·
           {{if .HasRight}}
           <a href="/bookmarks?offset={{.RightOffset}}&direction=1{{if .SearchQuery}}&q={{.SearchQuery}}{{end}}">Next</a>
           {{else}}
