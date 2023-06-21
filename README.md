@@ -107,3 +107,4 @@ One requirement of the design was that the addbookmark page was easily invokable
 ## TODO
 
 - Use If-Modified-Since cache checks on the feed generation
+- Figure out go string encoding through all the various layers
