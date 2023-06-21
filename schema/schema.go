@@ -8,7 +8,7 @@ import (
 )
 
 func InitAndVerifyDb() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite")
+	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func InitAndVerifyDb() (*sql.DB, error) {
 }
 
 func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
-	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite")
+	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
 
 	if err != nil {
 		return err
