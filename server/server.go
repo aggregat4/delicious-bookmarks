@@ -304,10 +304,32 @@ func showBookmarks(db *sql.DB, c echo.Context, config domain.Configuration) erro
 			RightOffset = bookmarks[config.BookmarksPageSize-1].Created.Unix()
 		}
 
+		feedId, err := getFeedIdForUser(db, userid)
+		if err != nil {
+			return handleError(err)
+		}
+
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", domain.BookmarkSlice{Bookmarks: bookmarks, HasLeft: HasLeft, LeftOffset: LeftOffset, HasRight: HasRight, RightOffset: RightOffset, SearchQuery: searchQuery, CsrfToken: c.Get("csrf").(string)})
+		return c.Render(http.StatusOK, "bookmarks", domain.BookmarkSlice{
+			Bookmarks:   bookmarks,
+			HasLeft:     HasLeft,
+			LeftOffset:  LeftOffset,
+			HasRight:    HasRight,
+			RightOffset: RightOffset,
+			SearchQuery: searchQuery,
+			CsrfToken:   c.Get("csrf").(string),
+			RssFeedUrl:  config.DeliciousBookmarksBaseUrl + "/feeds/" + feedId})
 	})
+}
+
+func getFeedIdForUser(db *sql.DB, userid int) (string, error) {
+	var feedId string
+	err := db.QueryRow("SELECT feed_id FROM users WHERE id = ?", userid).Scan(&feedId)
+	if err != nil {
+		return "", err
+	}
+	return feedId, nil
 }
 
 func showAddBookmark(db *sql.DB, c echo.Context) error {

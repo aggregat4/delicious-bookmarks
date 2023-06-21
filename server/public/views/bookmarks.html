@@ -97,6 +97,7 @@
         column-gap: 12px;
       }
     </style>  
+    <link rel="alternate" type="application/rss+xml" title="RSS Feed for your delicious bookmarks (PRIVATE LINK)"  href="{{.RssFeedUrl}}" />
   </head>
   <body>
     <header>
@@ -120,7 +121,11 @@
           <input type="search" id="search" name="q" value="{{.SearchQuery}}">
           <button>Search</button>
         </form>
-        <a href="/addbookmark">Add Bookmark</a>
+        <div>
+          <a href="{{.RssFeedUrl}}">RSS Feed</a>
+          ·
+          <a href="/addbookmark">Add Bookmark</a>
+        </div>
       </nav>
     </header>
     <main>

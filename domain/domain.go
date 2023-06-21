@@ -10,6 +10,7 @@ type BookmarkSlice struct {
 	RightOffset int64
 	SearchQuery string
 	CsrfToken   string
+	RssFeedUrl  string
 }
 
 type Bookmark struct {
