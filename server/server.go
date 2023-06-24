@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -106,17 +107,11 @@ func login(db *sql.DB, c echo.Context) error {
 		}
 
 		if crypto.CheckPasswordHash(password, passwordHash) {
-			// we have successfully logged in, create a session cookie and redirect to the bookmarks page
-			sess, err := session.Get("delicious-bookmarks-session", c)
-			if err != nil {
-				log.Println("Error getting session: ", err)
-				clearSessionCookie(c)
-				return c.Redirect(http.StatusFound, "/login")
-			} else {
-				sess.Values["userid"] = userid
-				sess.Save(c.Request(), c.Response())
-				return c.Redirect(http.StatusFound, "/bookmarks")
-			}
+			// we have successfully checked the password, create a session cookie and redirect to the bookmarks page
+			sess, _ := session.Get("delicious-bookmarks-session", c)
+			sess.Values["userid"] = userid
+			sess.Save(c.Request(), c.Response())
+			return c.Redirect(http.StatusFound, "/bookmarks")
 		}
 	}
 
@@ -507,8 +502,8 @@ func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
 				Content: readLaterBookmark.Content,
 				Id:      readLaterBookmark.Url + "#" + strconv.FormatInt(readLaterBookmark.RetrievalTime.Unix(), 10),
 				// Description: "This is the first item in my RSS feed",
-				// Author:  &feeds.Author{Name: "John Doe", Email: "johndoe@example.com"},
-				Created: time.Now(),
+				Author:  &feeds.Author{Name: readLaterBookmark.Byline},
+				Created: readLaterBookmark.RetrievalTime,
 			}
 			feed.Add(item)
 		} else {
@@ -527,7 +522,7 @@ func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
 func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAttempts int) ([]domain.ReadLaterBookmarkWithContent, error) {
 	rows, err := db.Query(
 		`
-		SELECT b.url, rl.retrieval_status, rl.retrieval_time, rl.title, rl.content
+		SELECT b.url, rl.retrieval_status, rl.retrieval_time, rl.title, rl.byline, rl.content
 		FROM read_later rl, bookmarks b
 		WHERE rl.user_id = ?
 		AND rl.bookmark_id = b.id
@@ -541,17 +536,24 @@ func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAtt
 	for rows.Next() {
 		var url string
 		var retrievalStatus int
-		var retrievalTime int64
-		var title, content string
-		err = rows.Scan(&url, &retrievalStatus, &retrievalTime, &title, &content)
+		var retrievalTimeOrNull sql.NullInt64
+		var title, byline, content sql.NullString
+		err = rows.Scan(&url, &retrievalStatus, &retrievalTimeOrNull, &title, &byline, &content)
+		fmt.Println(url, retrievalStatus, retrievalTimeOrNull, title, byline)
 		if err != nil {
 			return nil, err
+		}
+		var retrievalTime int64
+		retrievalTime = 0
+		if retrievalTimeOrNull.Valid {
+			retrievalTime = retrievalTimeOrNull.Int64
 		}
 		result = append(result, domain.ReadLaterBookmarkWithContent{
 			Url:                   url,
 			SuccessfullyRetrieved: retrievalStatus == 0,
-			Title:                 title,
-			Content:               content,
+			Title:                 title.String,
+			Content:               content.String,
+			Byline:                byline.String,
 			RetrievalTime:         time.Unix(retrievalTime, 0),
 		})
 	}

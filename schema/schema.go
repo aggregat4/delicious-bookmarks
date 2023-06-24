@@ -163,6 +163,12 @@ var migrations = []Migration{
 		)
 		`,
 	},
+	{4,
+		`
+		-- Adding a column to the read_later table to store the byline of the article
+		ALTER TABLE read_later ADD COLUMN byline TEXT;
+		`,
+	},
 }
 
 func MigrateSchema(db *sql.DB) error {

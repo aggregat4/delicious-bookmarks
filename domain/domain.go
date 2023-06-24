@@ -28,6 +28,7 @@ type ReadLaterBookmarkWithContent struct {
 	Url                   string
 	SuccessfullyRetrieved bool
 	Title                 string
+	Byline                string
 	Content               string
 	RetrievalTime         time.Time
 }

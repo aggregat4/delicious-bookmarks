@@ -103,7 +103,7 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 	rows.Close()
 
 	for _, bookmark := range bookmarksToDownload {
-		title, content, err := downloadContent(bookmark.Url, client, config.MaxContentDownloadSizeBytes)
+		downloadedUrl, err := downloadContent(bookmark.Url, client, config.MaxContentDownloadSizeBytes)
 
 		if err != nil {
 			// TODO: figure out what go logging semantics are since I need this info to debug
@@ -121,15 +121,15 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 			}
 		} else {
 			// Sanitise the content with bluemonday just to be sure and to perhaps have some saner content
-			sanitised := sanitisationPolicy.Sanitize(content)
+			sanitised := sanitisationPolicy.Sanitize(downloadedUrl.Content)
 			// log.Println(sanitised)
 			_, err = db.Exec(
 				`
 				UPDATE read_later
-				SET retrieval_status = 0, retrieval_time = ?, title = ?, content = ?, retrieval_attempt_count = ?
+				SET retrieval_status = 0, retrieval_time = ?, title = ?, byline = ?, content = ?, retrieval_attempt_count = ?
 				WHERE id = ?
 				`,
-				time.Now().Unix(), title, sanitised, bookmark.AttemptCount+1, bookmark.Id,
+				downloadedUrl.RetrievalTime.Unix(), downloadedUrl.Title, downloadedUrl.Byline, sanitised, bookmark.AttemptCount+1, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -138,7 +138,7 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 	}
 }
 
-func downloadContent(urlString string, client *http.Client, maxContentDownloadSizeBytes int) (string, string, error) {
+func downloadContent(urlString string, client *http.Client, maxContentDownloadSizeBytes int) (domain.ReadLaterBookmarkWithContent, error) {
 	log.Printf("Downloading content for url %s", urlString)
 
 	req, err := http.NewRequest("GET", urlString, nil)
@@ -152,10 +152,15 @@ func downloadContent(urlString string, client *http.Client, maxContentDownloadSi
 	}
 	defer resp.Body.Close()
 
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" {
+		fmt.Println("Content Type:", contentType)
+	}
+
 	limitReader := io.LimitReader(resp.Body, int64(maxContentDownloadSizeBytes))
 	bodyBytes, err := io.ReadAll(limitReader)
 	if err != nil {
-		return "", "", fmt.Errorf("error reading response body from %s: %w", urlString, err)
+		return domain.ReadLaterBookmarkWithContent{}, fmt.Errorf("error reading response body from %s: %w", urlString, err)
 	}
 
 	content := string(bodyBytes)
@@ -164,14 +169,18 @@ func downloadContent(urlString string, client *http.Client, maxContentDownloadSi
 	if err == nil {
 		article, err := readability.FromReader(strings.NewReader(content), realUrl)
 		if err != nil {
-			return "", "", fmt.Errorf("error parsing content from %s: %w", urlString, err)
+			return domain.ReadLaterBookmarkWithContent{}, fmt.Errorf("error parsing content from %s: %w", urlString, err)
 		} else {
 			// log.Println(article.Content)
 			// log.Println(article.TextContent)
-			return article.Title, article.Content, nil
+			return domain.ReadLaterBookmarkWithContent{
+				RetrievalTime: time.Now(),
+				Title:         article.Title,
+				Byline:        article.Byline,
+				Content:       article.Content}, nil
 		}
 	} else {
-		return "", "", err
+		return domain.ReadLaterBookmarkWithContent{}, err
 	}
 }
 
