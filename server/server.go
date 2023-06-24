@@ -496,7 +496,7 @@ func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
 
 	for _, readLaterBookmark := range readLaterBookmarks {
 		if readLaterBookmark.SuccessfullyRetrieved {
-			contentTypeIsHtml := strings.Contains(readLaterBookmark.ContentType, "text/html")
+			contentTypeIsHtml := readLaterBookmark.ContentType == "" || strings.Contains(readLaterBookmark.ContentType, "text/html")
 			item := &feeds.Item{
 				Title:   readLaterBookmark.Title,
 				Link:    &feeds.Link{Href: readLaterBookmark.Url},
