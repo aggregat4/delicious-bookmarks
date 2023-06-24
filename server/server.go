@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
-	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -18,6 +17,7 @@ import (
 	"aggregat4/gobookmarks/crawler"
 	"aggregat4/gobookmarks/crypto"
 	"aggregat4/gobookmarks/domain"
+	"aggregat4/gobookmarks/lang"
 	"aggregat4/gobookmarks/schema"
 
 	"github.com/google/uuid"
@@ -496,10 +496,11 @@ func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
 
 	for _, readLaterBookmark := range readLaterBookmarks {
 		if readLaterBookmark.SuccessfullyRetrieved {
+			contentTypeIsHtml := strings.Contains(readLaterBookmark.ContentType, "text/html")
 			item := &feeds.Item{
 				Title:   readLaterBookmark.Title,
 				Link:    &feeds.Link{Href: readLaterBookmark.Url},
-				Content: readLaterBookmark.Content,
+				Content: lang.IfElse(contentTypeIsHtml, readLaterBookmark.Content, "Content is not HTML."),
 				Id:      readLaterBookmark.Url + "#" + strconv.FormatInt(readLaterBookmark.RetrievalTime.Unix(), 10),
 				// Description: "This is the first item in my RSS feed",
 				Author:  &feeds.Author{Name: readLaterBookmark.Byline},
@@ -522,7 +523,7 @@ func showFeed(db *sql.DB, c echo.Context, config domain.Configuration) error {
 func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAttempts int) ([]domain.ReadLaterBookmarkWithContent, error) {
 	rows, err := db.Query(
 		`
-		SELECT b.url, rl.retrieval_status, rl.retrieval_time, rl.title, rl.byline, rl.content
+		SELECT b.url, rl.retrieval_status, rl.retrieval_time, rl.title, rl.byline, rl.content, rl.content_type
 		FROM read_later rl, bookmarks b
 		WHERE rl.user_id = ?
 		AND rl.bookmark_id = b.id
@@ -537,9 +538,9 @@ func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAtt
 		var url string
 		var retrievalStatus int
 		var retrievalTimeOrNull sql.NullInt64
-		var title, byline, content sql.NullString
-		err = rows.Scan(&url, &retrievalStatus, &retrievalTimeOrNull, &title, &byline, &content)
-		fmt.Println(url, retrievalStatus, retrievalTimeOrNull, title, byline)
+		var title, byline, content, contentType sql.NullString
+		err = rows.Scan(&url, &retrievalStatus, &retrievalTimeOrNull, &title, &byline, &content, &contentType)
+		// fmt.Println(url, retrievalStatus, retrievalTimeOrNull, title, byline)
 		if err != nil {
 			return nil, err
 		}
@@ -555,6 +556,7 @@ func findReadLaterBookmarksWithContent(db *sql.DB, userId string, maxDownloadAtt
 			Content:               content.String,
 			Byline:                byline.String,
 			RetrievalTime:         time.Unix(retrievalTime, 0),
+			ContentType:           contentType.String,
 		})
 	}
 	return result, nil

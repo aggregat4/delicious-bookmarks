@@ -31,6 +31,7 @@ type ReadLaterBookmarkWithContent struct {
 	Byline                string
 	Content               string
 	RetrievalTime         time.Time
+	ContentType           string
 }
 
 type Configuration struct {

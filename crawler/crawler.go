@@ -126,10 +126,10 @@ func downloadNewReadLaterItems(db *sql.DB, client *http.Client, sanitisationPoli
 			_, err = db.Exec(
 				`
 				UPDATE read_later
-				SET retrieval_status = 0, retrieval_time = ?, title = ?, byline = ?, content = ?, retrieval_attempt_count = ?
+				SET retrieval_status = 0, retrieval_time = ?, title = ?, byline = ?, content = ?, retrieval_attempt_count = ?, content_type = ?
 				WHERE id = ?
 				`,
-				downloadedUrl.RetrievalTime.Unix(), downloadedUrl.Title, downloadedUrl.Byline, sanitised, bookmark.AttemptCount+1, bookmark.Id,
+				downloadedUrl.RetrievalTime.Unix(), downloadedUrl.Title, downloadedUrl.Byline, sanitised, bookmark.AttemptCount+1, downloadedUrl.ContentType, bookmark.Id,
 			)
 			if err != nil {
 				panic(err)
@@ -153,9 +153,6 @@ func downloadContent(urlString string, client *http.Client, maxContentDownloadSi
 	defer resp.Body.Close()
 
 	contentType := resp.Header.Get("Content-Type")
-	if contentType != "" {
-		fmt.Println("Content Type:", contentType)
-	}
 
 	limitReader := io.LimitReader(resp.Body, int64(maxContentDownloadSizeBytes))
 	bodyBytes, err := io.ReadAll(limitReader)
@@ -177,7 +174,8 @@ func downloadContent(urlString string, client *http.Client, maxContentDownloadSi
 				RetrievalTime: time.Now(),
 				Title:         article.Title,
 				Byline:        article.Byline,
-				Content:       article.Content}, nil
+				Content:       article.Content,
+				ContentType:   contentType}, nil
 		}
 	} else {
 		return domain.ReadLaterBookmarkWithContent{}, err

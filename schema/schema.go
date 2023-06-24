@@ -167,6 +167,7 @@ var migrations = []Migration{
 		`
 		-- Adding a column to the read_later table to store the byline of the article
 		ALTER TABLE read_later ADD COLUMN byline TEXT;
+		ALTER TABLE read_later ADD COLUMN content_type TEXT;
 		`,
 	},
 }
