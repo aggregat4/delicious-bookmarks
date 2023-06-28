@@ -170,6 +170,12 @@ var migrations = []Migration{
 		ALTER TABLE read_later ADD COLUMN content_type TEXT;
 		`,
 	},
+	{5,
+		`
+		-- Enable WAL mode on the database to allow for concurrent reads and writes
+		PRAGMA journal_mode=WAL;
+		`,
+	},
 }
 
 func MigrateSchema(db *sql.DB) error {
