@@ -31,6 +31,9 @@ import (
 //go:embed public/views/*.html
 var viewTemplates embed.FS
 
+//go:embed public/images/*.png
+var images embed.FS
+
 func GetOrDefault(value string, defaultValue string) string {
 	if value != "" {
 		return value
@@ -74,6 +77,7 @@ func RunServer(config domain.Configuration) {
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 	e.POST("/deletebookmark", func(c echo.Context) error { return deleteBookmark(db, c) })
 	e.GET("/feeds/:id", func(c echo.Context) error { return showFeed(db, c, config) })
+	e.GET("/images/delicious.png", func(c echo.Context) error { return loadDeliciousImage(c) })
 
 	quitChannel := make(chan struct{})
 	crawler.RunBookmarkCrawler(quitChannel, db, config)
@@ -81,6 +85,19 @@ func RunServer(config domain.Configuration) {
 	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
 	e.Logger.Fatal(e.Start(":" + port))
 	// NO MORE CODE HERE, IT WILL NOT BE EXECUTED
+}
+
+func loadDeliciousImage(c echo.Context) error {
+	file, err := images.ReadFile("public/images/delicious.png")
+	if err != nil {
+		return err
+	}
+	c.Response().Header().Set("Content-Type", "image/png")
+	_, err = c.Response().Write(file)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func highlight(text string) string {
