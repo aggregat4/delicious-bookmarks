@@ -143,12 +143,12 @@ func downloadContent(urlString string, client *http.Client, maxContentDownloadSi
 
 	req, err := http.NewRequest("GET", urlString, nil)
 	if err != nil {
-		panic(err)
+		return domain.ReadLaterBookmarkWithContent{}, err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return domain.ReadLaterBookmarkWithContent{}, err
 	}
 	defer resp.Body.Close()
 
