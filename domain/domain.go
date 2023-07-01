@@ -45,4 +45,6 @@ type Configuration struct {
 	DeliciousBookmarksBaseUrl        string
 	ServerReadTimeoutSeconds         int
 	ServerWriteTimeoutSeconds        int
+	SessionCookieSecretKey           string
+	ServerPort                       int
 }

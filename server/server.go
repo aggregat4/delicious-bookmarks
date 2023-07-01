@@ -9,7 +9,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,13 +33,6 @@ var viewTemplates embed.FS
 //go:embed public/images/*.png
 var images embed.FS
 
-func GetOrDefault(value string, defaultValue string) string {
-	if value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 func RunServer(config domain.Configuration) {
 	db, err := schema.InitAndVerifyDb()
 	if err != nil {
@@ -64,7 +56,7 @@ func RunServer(config domain.Configuration) {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	sessionCookieSecretKey := GetOrDefault(os.Getenv("BOOKMARKS_SESSION_COOKIE_SECRET_KEY"), uuid.New().String())
+	sessionCookieSecretKey := config.SessionCookieSecretKey
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
@@ -85,8 +77,8 @@ func RunServer(config domain.Configuration) {
 	quitChannel := make(chan struct{})
 	crawler.RunBookmarkCrawler(quitChannel, db, config)
 
-	port := GetOrDefault(os.Getenv("BOOKMARKS_PORT"), "1323")
-	e.Logger.Fatal(e.Start(":" + port))
+	port := config.ServerPort
+	e.Logger.Fatal(e.Start(":" + strconv.Itoa(port)))
 	// NO MORE CODE HERE, IT WILL NOT BE EXECUTED
 }
 
