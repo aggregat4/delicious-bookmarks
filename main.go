@@ -63,6 +63,8 @@ func main() {
 			MonthsToAddToFeed:                getIntFromEnv("MONTHS_TO_ADD_TO_FEED", 6),
 			BookmarksPageSize:                getIntFromEnv("BOOKMARKS_PAGE_SIZE", 50),
 			DeliciousBookmarksBaseUrl:        requireStringFromEnv("DELICIOUS_BOOKMARKS_BASE_URL"),
+			ServerReadTimeoutSeconds:         getIntFromEnv("SERVER_READ_TIMEOUT_SECONDS", 5),
+			ServerWriteTimeoutSeconds:        getIntFromEnv("SERVER_WRITE_TIMEOUT_SECONDS", 10),
 		})
 	}
 }

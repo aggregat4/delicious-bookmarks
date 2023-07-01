@@ -49,6 +49,9 @@ func RunServer(config domain.Configuration) {
 	defer db.Close()
 
 	e := echo.New()
+	// Set server timeouts based on advice from https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#1687428081
+	e.Server.ReadTimeout = time.Duration(config.ServerReadTimeoutSeconds) * time.Second
+	e.Server.WriteTimeout = time.Duration(config.ServerWriteTimeoutSeconds) * time.Second
 
 	t := &Template{
 		templates: template.Must(template.New("").Funcs(template.FuncMap{

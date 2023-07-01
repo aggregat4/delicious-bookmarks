@@ -43,4 +43,6 @@ type Configuration struct {
 	MonthsToAddToFeed                int
 	BookmarksPageSize                int
 	DeliciousBookmarksBaseUrl        string
+	ServerReadTimeoutSeconds         int
+	ServerWriteTimeoutSeconds        int
 }
