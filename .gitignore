@@ -1,5 +1,6 @@
 gobookmarks
 *.sqlite
+*.sqlite-*
 tmp/
 .vscode/
 .env
