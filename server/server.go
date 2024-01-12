@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"errors"
 	"html/template"
 	"io"
@@ -99,9 +100,18 @@ func highlight(text string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(text, "{{mark}}", "<mark>"), "{{endmark}}", "</mark>")
 }
 
+// login handles the login page submission, checking the provided credentials against the database.
+// If valid it creates a new session with the user ID saved. It will then redirect to either the
+// originally requested URL from the redirect parameter, or to /bookmarks if none provided.
 func login(db *sql.DB, c echo.Context) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
+
+	redirectUrl := "/bookmarks"
+	decodedRedirectUrl, err := base64.StdEncoding.DecodeString(c.Param("redirect"))
+	if err == nil {
+		redirectUrl = string(decodedRedirectUrl)
+	}
 
 	rows, err := db.Query("SELECT id, password FROM users WHERE username = ?", username)
 	if err != nil {
@@ -123,7 +133,7 @@ func login(db *sql.DB, c echo.Context) error {
 			sess, _ := session.Get("delicious-bookmarks-session", c)
 			sess.Values["userid"] = userid
 			sess.Save(c.Request(), c.Response())
-			return c.Redirect(http.StatusFound, "/bookmarks")
+			return c.Redirect(http.StatusFound, redirectUrl)
 		}
 	}
 
@@ -150,19 +160,20 @@ func showLogin(c echo.Context) error {
 
 func withValidSession(c echo.Context, delegate func(userid int) error) error {
 	sess, err := session.Get("delicious-bookmarks-session", c)
+	originalRequestUrlBase64 := base64.StdEncoding.EncodeToString([]byte(c.Request().URL.String()))
 	if err != nil {
 		clearSessionCookie(c)
-		return c.Redirect(http.StatusFound, "/login")
+		return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
 	} else {
 		useridraw := sess.Values["userid"]
 		if useridraw == nil {
 			log.Println("Found a session but no userid")
-			return c.Redirect(http.StatusFound, "/login")
+			return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
 		}
 		sessionUserid := useridraw.(int)
 		if sessionUserid == 0 {
 			log.Println("Found a session but no userid")
-			return c.Redirect(http.StatusFound, "/login")
+			return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
 		} else {
 			return delegate(sessionUserid)
 		}
