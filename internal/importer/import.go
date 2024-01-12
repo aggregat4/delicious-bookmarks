@@ -1,8 +1,8 @@
 package importer
 
 import (
-	"aggregat4/gobookmarks/domain"
-	"aggregat4/gobookmarks/schema"
+	"aggregat4/gobookmarks/internal/domain"
+	"aggregat4/gobookmarks/internal/schema"
 	"encoding/json"
 	"errors"
 	"log"

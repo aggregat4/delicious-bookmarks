@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"aggregat4/gobookmarks/crawler"
-	"aggregat4/gobookmarks/domain"
+	"aggregat4/gobookmarks/internal/crawler"
+	"aggregat4/gobookmarks/internal/domain"
+	"aggregat4/gobookmarks/internal/schema"
 	"aggregat4/gobookmarks/pkg/crypto"
 	"aggregat4/gobookmarks/pkg/lang"
-	"aggregat4/gobookmarks/schema"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/feeds"

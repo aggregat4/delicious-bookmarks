@@ -1,7 +1,7 @@
 package crawler
 
 import (
-	"aggregat4/gobookmarks/domain"
+	"aggregat4/gobookmarks/internal/domain"
 	"database/sql"
 	"fmt"
 	"io"

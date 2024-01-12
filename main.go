@@ -7,11 +7,11 @@ import (
 	"os"
 	"strconv"
 
-	"aggregat4/gobookmarks/domain"
-	"aggregat4/gobookmarks/importer"
+	"aggregat4/gobookmarks/internal/domain"
+	"aggregat4/gobookmarks/internal/importer"
+	"aggregat4/gobookmarks/internal/schema"
+	"aggregat4/gobookmarks/internal/server"
 	"aggregat4/gobookmarks/pkg/crypto"
-	"aggregat4/gobookmarks/schema"
-	"aggregat4/gobookmarks/server"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
