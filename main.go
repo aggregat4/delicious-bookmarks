@@ -7,9 +7,9 @@ import (
 	"os"
 	"strconv"
 
-	"aggregat4/gobookmarks/crypto"
 	"aggregat4/gobookmarks/domain"
 	"aggregat4/gobookmarks/importer"
+	"aggregat4/gobookmarks/pkg/crypto"
 	"aggregat4/gobookmarks/schema"
 	"aggregat4/gobookmarks/server"
 
