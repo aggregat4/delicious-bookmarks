@@ -16,8 +16,8 @@ import (
 
 	"aggregat4/gobookmarks/crawler"
 	"aggregat4/gobookmarks/domain"
-	"aggregat4/gobookmarks/lang"
 	"aggregat4/gobookmarks/pkg/crypto"
+	"aggregat4/gobookmarks/pkg/lang"
 	"aggregat4/gobookmarks/schema"
 
 	"github.com/google/uuid"
