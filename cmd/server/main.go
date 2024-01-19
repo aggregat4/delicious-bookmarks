@@ -11,7 +11,6 @@ import (
 	"aggregat4/gobookmarks/internal/importer"
 	"aggregat4/gobookmarks/internal/schema"
 	"aggregat4/gobookmarks/internal/server"
-	"aggregat4/gobookmarks/pkg/crypto"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -24,9 +23,6 @@ func main() {
 	var initdbUsername string
 	flag.StringVar(&initdbUsername, "initdb-username", "", "Initializes the database with a user with this username")
 
-	var passwordToHash string
-	flag.StringVar(&passwordToHash, "passwordtohash", "", "A password that should be hashed and salted and the output sent to stdout")
-
 	var importBookmarksHtmlFile string
 	flag.StringVar(&importBookmarksHtmlFile, "importFile", "", "A bookmarks.html file to import in the database")
 	var importBookmarksUsername string
@@ -34,13 +30,7 @@ func main() {
 
 	flag.Parse()
 
-	if passwordToHash != "" {
-		hash, err := crypto.HashPassword(passwordToHash)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(hash)
-	} else if initdbPassword != "" && initdbUsername != "" {
+	if initdbPassword != "" && initdbUsername != "" {
 		err := schema.InitDatabaseWithUser(initdbUsername, initdbPassword)
 		if err != nil {
 			log.Fatalf("Error initializing database: %s", err)

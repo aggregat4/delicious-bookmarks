@@ -4,3 +4,5 @@ gobookmarks
 tmp/
 .vscode/
 .env
+bin/
+coverage.*

@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"aggregat4/gobookmarks/pkg/crypto"
 	"database/sql"
 	"errors"
 
@@ -19,6 +20,10 @@ func InitAndVerifyDb() (*sql.DB, error) {
 }
 
 func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
+	hashedPassword, err := crypto.HashPassword(initdbPassword)
+	if err != nil {
+		return err
+	}
 	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
 
 	if err != nil {
@@ -27,7 +32,10 @@ func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
 
 	defer db.Close()
 
-	MigrateSchema(db)
+	err = MigrateSchema(db)
+	if err != nil {
+		return err
+	}
 
 	rows, err := db.Query("SELECT password FROM users WHERE id = 1 AND username = ?", initdbUsername)
 	if err != nil {
@@ -43,12 +51,12 @@ func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
 			return err
 		}
 
-		if initdbPassword != password {
+		if hashedPassword != password {
 			return errors.New("the database already has this account but with a different password")
 		}
 	} else {
 		feedId := uuid.New().String()
-		_, err := db.Exec("INSERT INTO users (username, password, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, initdbPassword, feedId)
+		_, err := db.Exec("INSERT INTO users (username, password, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, hashedPassword, feedId)
 		if err != nil {
 			return err
 		}

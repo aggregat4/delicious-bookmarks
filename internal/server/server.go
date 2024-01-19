@@ -132,7 +132,10 @@ func login(db *sql.DB, c echo.Context) error {
 			// we have successfully checked the password, create a session cookie and redirect to the bookmarks page
 			sess, _ := session.Get("delicious-bookmarks-session", c)
 			sess.Values["userid"] = userid
-			sess.Save(c.Request(), c.Response())
+			err = sess.Save(c.Request(), c.Response())
+			if err != nil {
+				return err
+			}
 			return c.Redirect(http.StatusFound, redirectUrl)
 		}
 	}
