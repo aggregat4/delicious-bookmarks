@@ -17,7 +17,6 @@ import (
 	"aggregat4/gobookmarks/internal/crawler"
 	"aggregat4/gobookmarks/internal/domain"
 	"aggregat4/gobookmarks/internal/schema"
-	"aggregat4/gobookmarks/pkg/crypto"
 	"aggregat4/gobookmarks/pkg/lang"
 
 	"github.com/google/uuid"
@@ -66,8 +65,6 @@ func RunServer(config domain.Configuration) {
 		TokenLookup: "form:csrf_token",
 	}))
 
-	e.GET("/login", func(c echo.Context) error { return showLogin(c) })
-	e.POST("/login", func(c echo.Context) error { return login(db, c) })
 	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c, config) })
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
@@ -100,48 +97,50 @@ func highlight(text string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(text, "{{mark}}", "<mark>"), "{{endmark}}", "</mark>")
 }
 
+// TODO: continue refactoring to OIDC here
+
 // login handles the login page submission, checking the provided credentials against the database.
 // If valid it creates a new session with the user ID saved. It will then redirect to either the
 // originally requested URL from the redirect parameter, or to /bookmarks if none provided.
-func login(db *sql.DB, c echo.Context) error {
-	username := c.FormValue("username")
-	password := c.FormValue("password")
+// func login(db *sql.DB, c echo.Context) error {
+// 	username := c.FormValue("username")
+// 	password := c.FormValue("password")
 
-	redirectUrl := "/bookmarks"
-	decodedRedirectUrl, err := base64.StdEncoding.DecodeString(c.Param("redirect"))
-	if err == nil {
-		redirectUrl = string(decodedRedirectUrl)
-	}
+// 	redirectUrl := "/bookmarks"
+// 	decodedRedirectUrl, err := base64.StdEncoding.DecodeString(c.Param("redirect"))
+// 	if err == nil {
+// 		redirectUrl = string(decodedRedirectUrl)
+// 	}
 
-	rows, err := db.Query("SELECT id, password FROM users WHERE username = ?", username)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+// 	rows, err := db.Query("SELECT id, password FROM users WHERE username = ?", username)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer rows.Close()
 
-	if rows.Next() {
-		var passwordHash string
-		var userid int
-		err = rows.Scan(&userid, &passwordHash)
+// 	if rows.Next() {
+// 		var passwordHash string
+// 		var userid int
+// 		err = rows.Scan(&userid, &passwordHash)
 
-		if err != nil {
-			return err
-		}
+// 		if err != nil {
+// 			return err
+// 		}
 
-		if crypto.CheckPasswordHash(password, passwordHash) {
-			// we have successfully checked the password, create a session cookie and redirect to the bookmarks page
-			sess, _ := session.Get("delicious-bookmarks-session", c)
-			sess.Values["userid"] = userid
-			err = sess.Save(c.Request(), c.Response())
-			if err != nil {
-				return err
-			}
-			return c.Redirect(http.StatusFound, redirectUrl)
-		}
-	}
+// 		if crypto.CheckPasswordHash(password, passwordHash) {
+// 			// we have successfully checked the password, create a session cookie and redirect to the bookmarks page
+// 			sess, _ := session.Get("delicious-bookmarks-session", c)
+// 			sess.Values["userid"] = userid
+// 			err = sess.Save(c.Request(), c.Response())
+// 			if err != nil {
+// 				return err
+// 			}
+// 			return c.Redirect(http.StatusFound, redirectUrl)
+// 		}
+// 	}
 
-	return c.Redirect(http.StatusFound, "/login")
-}
+// 	return c.Redirect(http.StatusFound, "/login")
+// }
 
 func clearSessionCookie(c echo.Context) {
 	c.SetCookie(&http.Cookie{
@@ -151,14 +150,6 @@ func clearSessionCookie(c echo.Context) {
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 	})
-}
-
-type LoginPage struct {
-	CsrfToken string
-}
-
-func showLogin(c echo.Context) error {
-	return c.Render(http.StatusOK, "login", LoginPage{CsrfToken: c.Get("csrf").(string)})
 }
 
 func withValidSession(c echo.Context, delegate func(userid int) error) error {

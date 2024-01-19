@@ -1,9 +1,7 @@
 package schema
 
 import (
-	"aggregat4/gobookmarks/pkg/crypto"
 	"database/sql"
-	"errors"
 
 	"github.com/google/uuid"
 )
@@ -19,44 +17,22 @@ func InitAndVerifyDb() (*sql.DB, error) {
 	return db, err
 }
 
-func InitDatabaseWithUser(initdbUsername, initdbPassword string) error {
-	hashedPassword, err := crypto.HashPassword(initdbPassword)
-	if err != nil {
-		return err
-	}
-	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
-
+// TODO: call this from a new cmd that inits with a user (do we even need it? can we just merge this into the importer workflow? otherwise we have no use case)
+func InitDatabaseWithUser(initdbUsername string) error {
+	db, err := InitAndVerifyDb()
 	if err != nil {
 		return err
 	}
 
-	defer db.Close()
-
-	err = MigrateSchema(db)
-	if err != nil {
-		return err
-	}
-
-	rows, err := db.Query("SELECT password FROM users WHERE id = 1 AND username = ?", initdbUsername)
+	rows, err := db.Query("SELECT id FROM users WHERE username = ?", initdbUsername)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	if rows.Next() {
-		var password string
-		err = rows.Scan(&password)
-
-		if err != nil {
-			return err
-		}
-
-		if hashedPassword != password {
-			return errors.New("the database already has this account but with a different password")
-		}
-	} else {
+	if !rows.Next() {
 		feedId := uuid.New().String()
-		_, err := db.Exec("INSERT INTO users (username, password, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, hashedPassword, feedId)
+		_, err := db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
 		if err != nil {
 			return err
 		}
@@ -182,6 +158,12 @@ var migrations = []Migration{
 		`
 		-- Enable WAL mode on the database to allow for concurrent reads and writes
 		PRAGMA journal_mode=WAL;
+		`,
+	},
+	{6,
+		`
+		-- Removing the password column from users as we are switching to using openidconnect for authentication
+		ALTER TABLE users DROP COLUMN password;
 		`,
 	},
 }
