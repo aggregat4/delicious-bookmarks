@@ -58,7 +58,7 @@ func ImportBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	}
 	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
 	// now import all the bookmarks in the database
-	db, err := schema.InitAndVerifyDb()
+	db, err := schema.InitDatabaseWithUser(importBookmarksUsername)
 	if err != nil {
 		panic(err)
 	}

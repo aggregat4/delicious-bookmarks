@@ -17,16 +17,15 @@ func InitAndVerifyDb() (*sql.DB, error) {
 	return db, err
 }
 
-// TODO: call this from a new cmd that inits with a user (do we even need it? can we just merge this into the importer workflow? otherwise we have no use case)
-func InitDatabaseWithUser(initdbUsername string) error {
+func InitDatabaseWithUser(initdbUsername string) (*sql.DB, error) {
 	db, err := InitAndVerifyDb()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rows, err := db.Query("SELECT id FROM users WHERE username = ?", initdbUsername)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -34,10 +33,10 @@ func InitDatabaseWithUser(initdbUsername string) error {
 		feedId := uuid.New().String()
 		_, err := db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return db, nil
 }
 
 func initMigrationTable(db *sql.DB) error {
