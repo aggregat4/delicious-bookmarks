@@ -1,84 +1,10 @@
-package schema
+package repository
 
-import (
-	"database/sql"
+import "aggregat4/gobookmarks/pkg/migrations"
 
-	"github.com/google/uuid"
-)
-
-func InitAndVerifyDb() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
-	if err != nil {
-		return nil, err
-	}
-
-	err = MigrateSchema(db)
-
-	return db, err
-}
-
-func InitDatabaseWithUser(initdbUsername string) (*sql.DB, error) {
-	db, err := InitAndVerifyDb()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := db.Query("SELECT id FROM users WHERE username = ?", initdbUsername)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		feedId := uuid.New().String()
-		_, err := db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return db, nil
-}
-
-func initMigrationTable(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS migrations (sequence_id INTEGER NOT NULL PRIMARY KEY)")
-	return err
-}
-
-func existsMigrationTable(db *sql.DB) (bool, error) {
-	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'")
-	if err != nil {
-		return false, err
-	}
-	defer rows.Close()
-	return rows.Next(), nil
-}
-
-func getAppliedMigrations(db *sql.DB) ([]int, error) {
-	rows, err := db.Query("SELECT sequence_id FROM migrations")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var migrations []int
-	for rows.Next() {
-		var sequenceId int
-		err = rows.Scan(&sequenceId)
-		if err != nil {
-			return nil, err
-		}
-		migrations = append(migrations, sequenceId)
-	}
-	return migrations, nil
-}
-
-type Migration struct {
-	SequenceId int
-	Sql        string
-}
-
-var migrations = []Migration{
-	{1,
-		`
+var bookmarkMigrations = []migrations.Migration{
+	{SequenceId: 1,
+		Sql: `
 		CREATE TABLE IF NOT EXISTS users (
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL,
@@ -103,8 +29,8 @@ var migrations = []Migration{
 		`,
 	},
 	// adding a full text search index to the bookmarks table
-	{2,
-		`
+	{SequenceId: 2,
+		Sql: `
 		CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(url, title, description, tags, content='bookmarks', content_rowid='id');
 		CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN
 			INSERT INTO bookmarks_fts(rowid, url, title, description, tags) VALUES (new.id, new.url, new.title, new.description, new.tags);
@@ -121,8 +47,8 @@ var migrations = []Migration{
 		`,
 	},
 	// Adding the ability to mark bookmarks as "read later" and generate an RSS feed on them
-	{3,
-		`
+	{SequenceId: 3,
+		Sql: `
 		-- 0 = no read later, 1 = read later
 		ALTER TABLE bookmarks ADD COLUMN readlater INTEGER NOT NULL DEFAULT 0;
 
@@ -146,64 +72,23 @@ var migrations = []Migration{
 		)
 		`,
 	},
-	{4,
-		`
+	{SequenceId: 4,
+		Sql: `
 		-- Adding a column to the read_later table to store the byline of the article
 		ALTER TABLE read_later ADD COLUMN byline TEXT;
 		ALTER TABLE read_later ADD COLUMN content_type TEXT;
 		`,
 	},
-	{5,
-		`
+	{SequenceId: 5,
+		Sql: `
 		-- Enable WAL mode on the database to allow for concurrent reads and writes
 		PRAGMA journal_mode=WAL;
 		`,
 	},
-	{6,
-		`
+	{SequenceId: 6,
+		Sql: `
 		-- Removing the password column from users as we are switching to using openidconnect for authentication
 		ALTER TABLE users DROP COLUMN password;
 		`,
 	},
-}
-
-func MigrateSchema(db *sql.DB) error {
-	println("Migrating schema")
-	exists, err := existsMigrationTable(db)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		err = initMigrationTable(db)
-		if err != nil {
-			return err
-		}
-	}
-	appliedMigrations, err := getAppliedMigrations(db)
-	if err != nil {
-		return err
-	}
-	for _, migration := range migrations {
-		if !contains(appliedMigrations, migration.SequenceId) {
-			println("Executing migration ", migration.SequenceId)
-			_, err = db.Exec(migration.Sql)
-			if err != nil {
-				return err
-			}
-			_, err = db.Exec("INSERT INTO migrations (sequence_id) VALUES (?)", migration.SequenceId)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func contains(list []int, item int) bool {
-	for _, i := range list {
-		if i == item {
-			return true
-		}
-	}
-	return false
 }

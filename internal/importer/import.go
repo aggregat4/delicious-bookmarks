@@ -2,7 +2,7 @@ package importer
 
 import (
 	"aggregat4/gobookmarks/internal/domain"
-	"aggregat4/gobookmarks/internal/schema"
+	"aggregat4/gobookmarks/internal/repository"
 	"encoding/json"
 	"errors"
 	"log"
@@ -58,7 +58,7 @@ func ImportBookmarks(importBookmarksJsonFile, importBookmarksUsername string) er
 	}
 	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
 	// now import all the bookmarks in the database
-	db, err := schema.InitDatabaseWithUser(importBookmarksUsername)
+	db, err := repository.InitDatabaseWithUser(importBookmarksUsername)
 	if err != nil {
 		panic(err)
 	}

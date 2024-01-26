@@ -16,7 +16,7 @@ import (
 
 	"aggregat4/gobookmarks/internal/crawler"
 	"aggregat4/gobookmarks/internal/domain"
-	"aggregat4/gobookmarks/internal/schema"
+	"aggregat4/gobookmarks/internal/repository"
 	"aggregat4/gobookmarks/pkg/lang"
 
 	"github.com/google/uuid"
@@ -34,7 +34,7 @@ var viewTemplates embed.FS
 var images embed.FS
 
 func RunServer(config domain.Configuration) {
-	db, err := schema.InitAndVerifyDb()
+	db, err := repository.InitAndVerifyDb()
 	if err != nil {
 		panic(err)
 	}
