@@ -45,12 +45,13 @@ func RunServer(config domain.Configuration) {
 	e.Server.ReadTimeout = time.Duration(config.ServerReadTimeoutSeconds) * time.Second
 	e.Server.WriteTimeout = time.Duration(config.ServerWriteTimeoutSeconds) * time.Second
 
+	funcMap := template.FuncMap{
+		"highlight": func(text string) template.HTML {
+			return template.HTML(highlight(template.HTMLEscapeString(text)))
+		},
+	}
 	t := &Template{
-		templates: template.Must(template.New("").Funcs(template.FuncMap{
-			"highlight": func(text string) template.HTML {
-				return template.HTML(highlight(template.HTMLEscapeString(text)))
-			},
-		}).ParseFS(viewTemplates, "public/views/*.html")),
+		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
 
@@ -65,12 +66,15 @@ func RunServer(config domain.Configuration) {
 		TokenLookup: "form:csrf_token",
 	}))
 
+	// MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
+	imageFS := echo.MustSubFS(images, "public/images")
+	e.StaticFS("/images", imageFS)
+
 	e.GET("/bookmarks", func(c echo.Context) error { return showBookmarks(db, c, config) })
 	e.POST("/bookmarks", func(c echo.Context) error { return addBookmark(db, c) })
 	e.GET("/addbookmark", func(c echo.Context) error { return showAddBookmark(db, c) })
 	e.POST("/deletebookmark", func(c echo.Context) error { return deleteBookmark(db, c) })
 	e.GET("/feeds/:id", func(c echo.Context) error { return showFeed(db, c, config) })
-	e.GET("/images/delicious.png", func(c echo.Context) error { return loadDeliciousImage(c) })
 
 	quitChannel := make(chan struct{})
 	crawler.RunBookmarkCrawler(quitChannel, db, config)
@@ -78,19 +82,6 @@ func RunServer(config domain.Configuration) {
 	port := config.ServerPort
 	e.Logger.Fatal(e.Start(":" + strconv.Itoa(port)))
 	// NO MORE CODE HERE, IT WILL NOT BE EXECUTED
-}
-
-func loadDeliciousImage(c echo.Context) error {
-	file, err := images.ReadFile("public/images/delicious.png")
-	if err != nil {
-		return err
-	}
-	c.Response().Header().Set("Content-Type", "image/png")
-	_, err = c.Response().Write(file)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func highlight(text string) string {
