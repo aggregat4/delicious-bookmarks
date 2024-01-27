@@ -5,7 +5,9 @@ import (
 	"os"
 	"strconv"
 
+	"aggregat4/gobookmarks/internal/crawler"
 	"aggregat4/gobookmarks/internal/domain"
+	"aggregat4/gobookmarks/internal/repository"
 	"aggregat4/gobookmarks/internal/server"
 
 	"github.com/google/uuid"
@@ -18,7 +20,14 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error loading .env file: %s", err))
 	}
-	server.RunServer(domain.Configuration{
+	var store repository.Store
+	err = store.InitAndVerifyDb()
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
+	// Get and init config
+	config := domain.Configuration{
 		MaxContentDownloadAttempts:       getIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
 		MaxContentDownloadTimeoutSeconds: getIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_TIMEOUT_SECONDS", 20),
 		MaxContentDownloadSizeBytes:      getIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_SIZE_BYTES", 2*1024*1024),
@@ -31,7 +40,16 @@ func main() {
 		ServerWriteTimeoutSeconds:        getIntFromEnv("DELBM_SERVER_WRITE_TIMEOUT_SECONDS", 10),
 		SessionCookieSecretKey:           getStringFromEnv("DELBM_SESSION_COOKIE_SECRET_KEY", uuid.New().String()),
 		ServerPort:                       getIntFromEnv("DELBM_SERVER_PORT", 1323),
-	})
+	}
+	// Start the crawler
+	quitChannel := make(chan struct{})
+	crawler := crawler.Crawler{
+		Store:  &store,
+		Config: config,
+	}
+	crawler.Run(quitChannel)
+	// Start the server
+	server.RunServer(server.Controller{Store: &store, Config: config})
 }
 
 func requireStringFromEnv(s string) string {

@@ -48,3 +48,19 @@ type Configuration struct {
 	SessionCookieSecretKey           string
 	ServerPort                       int
 }
+
+const (
+	DirectionRight int = 0
+	DirectionLeft  int = 1
+)
+
+type ReadLaterBookmark struct {
+	Id           uint64
+	Url          string
+	AttemptCount int
+}
+
+type FeedCandidate struct {
+	BookmarkId int
+	UserId     int
+}

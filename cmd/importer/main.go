@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"aggregat4/gobookmarks/internal/importer"
+	"aggregat4/gobookmarks/internal/repository"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -18,7 +19,13 @@ func main() {
 	flag.Parse()
 
 	if importBookmarksHtmlFile != "" && importBookmarksUsername != "" {
-		err := importer.ImportBookmarks(importBookmarksHtmlFile, importBookmarksUsername)
+		var store repository.Store
+		err := store.InitAndVerifyDb()
+		defer store.Close()
+		if err != nil {
+			log.Fatalf("Error initializing database: %s", err)
+		}
+		err = importer.ImportBookmarks(&store, importBookmarksHtmlFile, importBookmarksUsername)
 		if err != nil {
 			log.Fatalf("Error importing bookmarks: %s", err)
 		}
