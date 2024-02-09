@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -10,9 +11,11 @@ import (
 	"aggregat4/gobookmarks/internal/repository"
 	"aggregat4/gobookmarks/internal/server"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/oauth2"
 )
 
 func main() {
@@ -26,6 +29,26 @@ func main() {
 		panic(err)
 	}
 	defer store.Close()
+	// Initialize OIDC provider
+	ctx := context.Background()
+	oidcProvider, err := oidc.NewProvider(ctx, requireStringFromEnv("DELBM_OIDC_IDP_SERVER"))
+	if err != nil {
+		panic(err)
+	}
+	oauth2Config := oauth2.Config{
+		ClientID:     requireStringFromEnv("DELBM_OIDC_CLIENT_ID"),
+		ClientSecret: requireStringFromEnv("DELBM_OIDC_CLIENT_SECRET"),
+		RedirectURL:  requireStringFromEnv("DELBM_OIDC_REDIRECT_URL"),
+		Endpoint:     oidcProvider.Endpoint(),
+		// oauth2.Endpoint{
+		// 	AuthURL:  requireStringFromEnv("DELBM_OIDC_IDP_AUTH_ENDPOINT"),
+		// 	TokenURL: requireStringFromEnv("DELBM_OIDC_IDP_TOKEN_ENDPOINT"),
+		// },
+		Scopes: []string{oidc.ScopeOpenID},
+	}
+	oidcConfig := oidc.Config{
+		ClientID: requireStringFromEnv("DELBM_OIDC_CLIENT_ID"),
+	}
 	// Get and init config
 	config := domain.Configuration{
 		MaxContentDownloadAttempts:       getIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
@@ -40,6 +63,8 @@ func main() {
 		ServerWriteTimeoutSeconds:        getIntFromEnv("DELBM_SERVER_WRITE_TIMEOUT_SECONDS", 10),
 		SessionCookieSecretKey:           getStringFromEnv("DELBM_SESSION_COOKIE_SECRET_KEY", uuid.New().String()),
 		ServerPort:                       getIntFromEnv("DELBM_SERVER_PORT", 1323),
+		Oauth2Config:                     oauth2Config,
+		OidcConfig:                       oidcConfig,
 	}
 	// Start the crawler
 	quitChannel := make(chan struct{})
@@ -49,7 +74,11 @@ func main() {
 	}
 	crawler.Run(quitChannel)
 	// Start the server
-	server.RunServer(server.Controller{Store: &store, Config: config})
+	server.RunServer(server.Controller{
+		Store:        &store,
+		Config:       config,
+		OidcProvider: oidcProvider,
+	})
 }
 
 func requireStringFromEnv(s string) string {

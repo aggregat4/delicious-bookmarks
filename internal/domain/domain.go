@@ -1,6 +1,11 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
+)
 
 type BookmarkSlice struct {
 	Bookmarks   []Bookmark
@@ -47,6 +52,8 @@ type Configuration struct {
 	ServerWriteTimeoutSeconds        int
 	SessionCookieSecretKey           string
 	ServerPort                       int
+	Oauth2Config                     oauth2.Config
+	OidcConfig                       oidc.Config
 }
 
 const (

@@ -15,8 +15,10 @@ import (
 
 	"aggregat4/gobookmarks/internal/domain"
 	"aggregat4/gobookmarks/internal/repository"
+	"aggregat4/gobookmarks/pkg/crypto"
 	"aggregat4/gobookmarks/pkg/lang"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/feeds"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
@@ -31,8 +33,9 @@ var viewTemplates embed.FS
 var images embed.FS
 
 type Controller struct {
-	Store  *repository.Store
-	Config domain.Configuration
+	Store        *repository.Store
+	Config       domain.Configuration
+	OidcProvider *oidc.Provider
 }
 
 func RunServer(controller Controller) {
@@ -66,6 +69,8 @@ func RunServer(controller Controller) {
 	imageFS := echo.MustSubFS(images, "public/images")
 	e.StaticFS("/images", imageFS)
 
+	e.GET("/oidccallback", controller.oidcCallback)
+
 	e.GET("/bookmarks", controller.showBookmarks)
 	e.POST("/bookmarks", controller.addBookmark)
 	e.GET("/addbookmark", controller.showAddBookmark)
@@ -81,51 +86,6 @@ func highlight(text string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(text, "{{mark}}", "<mark>"), "{{endmark}}", "</mark>")
 }
 
-// TODO: continue refactoring to OIDC here
-
-// login handles the login page submission, checking the provided credentials against the database.
-// If valid it creates a new session with the user ID saved. It will then redirect to either the
-// originally requested URL from the redirect parameter, or to /bookmarks if none provided.
-// func login(db *sql.DB, c echo.Context) error {
-// 	username := c.FormValue("username")
-// 	password := c.FormValue("password")
-
-// 	redirectUrl := "/bookmarks"
-// 	decodedRedirectUrl, err := base64.StdEncoding.DecodeString(c.Param("redirect"))
-// 	if err == nil {
-// 		redirectUrl = string(decodedRedirectUrl)
-// 	}
-
-// 	rows, err := db.Query("SELECT id, password FROM users WHERE username = ?", username)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer rows.Close()
-
-// 	if rows.Next() {
-// 		var passwordHash string
-// 		var userid int
-// 		err = rows.Scan(&userid, &passwordHash)
-
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		if crypto.CheckPasswordHash(password, passwordHash) {
-// 			// we have successfully checked the password, create a session cookie and redirect to the bookmarks page
-// 			sess, _ := session.Get("delicious-bookmarks-session", c)
-// 			sess.Values["userid"] = userid
-// 			err = sess.Save(c.Request(), c.Response())
-// 			if err != nil {
-// 				return err
-// 			}
-// 			return c.Redirect(http.StatusFound, redirectUrl)
-// 		}
-// 	}
-
-// 	return c.Redirect(http.StatusFound, "/login")
-// }
-
 func clearSessionCookie(c echo.Context) {
 	c.SetCookie(&http.Cookie{
 		Name:     "delicious-bookmarks-session",
@@ -136,25 +96,93 @@ func clearSessionCookie(c echo.Context) {
 	})
 }
 
-func withValidSession(c echo.Context, delegate func(userid int) error) error {
+func setOidcCallbackCookie(c echo.Context, state, originalRequestUrlBase64 string) {
+	c.SetCookie(&http.Cookie{
+		Name:     "delicious-bookmarks-oidc-callback",
+		Value:    state + "|" + originalRequestUrlBase64,
+		Path:     "/", // TODO: this path is not context path safe
+		Expires:  time.Now().Add(time.Minute * 5),
+		HttpOnly: true,
+	})
+}
+
+func (controller *Controller) withValidSession(c echo.Context, delegate func(userid int) error) error {
 	sess, err := session.Get("delicious-bookmarks-session", c)
 	originalRequestUrlBase64 := base64.StdEncoding.EncodeToString([]byte(c.Request().URL.String()))
-	if err != nil {
+	handleUnauthenticated := func() error {
 		clearSessionCookie(c)
-		return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
+		state, err := crypto.RandString(16)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "Internal server error")
+		}
+		setOidcCallbackCookie(c, state, originalRequestUrlBase64)
+		return c.Redirect(http.StatusFound, controller.Config.Oauth2Config.AuthCodeURL(state))
+	}
+	if err != nil {
+		return handleUnauthenticated()
 	} else {
 		useridraw := sess.Values["userid"]
 		if useridraw == nil {
-			log.Println("Found a session but no userid")
-			return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
+			return handleUnauthenticated()
 		}
 		sessionUserid := useridraw.(int)
 		if sessionUserid == 0 {
-			log.Println("Found a session but no userid")
-			return c.Redirect(http.StatusFound, "/login?redirect="+originalRequestUrlBase64)
+			return handleUnauthenticated()
 		} else {
 			return delegate(sessionUserid)
 		}
+	}
+}
+
+func (controller *Controller) oidcCallback(c echo.Context) error {
+	// check state vs cookie
+	state, err := c.Cookie("delicious-bookmarks-oidc-callback")
+	if err != nil {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+	if c.QueryParam("state") != state.Value {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+	oauth2Token, err := controller.Config.Oauth2Config.Exchange(c.Request().Context(), c.QueryParam("code"))
+	if err != nil {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
+	if !ok {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+	// TODO: maybe initialize this verifier beforehand and reuse it here
+	verifier := controller.OidcProvider.Verifier(&controller.Config.OidcConfig)
+	idToken, err := verifier.Verify(c.Request().Context(), rawIDToken)
+	if err != nil {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+	// we now have a valid ID token, to progress in the application we need to map this
+	// to an existing user or create a new one on demand
+	username := idToken.Subject
+	userId, err := controller.Store.FindOrCreateUser(username)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Internal Server Error")
+	}
+	// we have a valid user, we can now create a session and redirect to the original request
+	sess, _ := session.Get("delicious-bookmarks-session", c)
+	sess.Values["userid"] = userId
+	err = sess.Save(c.Request(), c.Response())
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Internal Server Error")
+	}
+	stateParts := strings.Split(state.Value, "|")
+	if len(stateParts) > 1 {
+		originalRequestUrlBase64 := stateParts[1]
+		decodedOriginalRequestUrl, err := base64.StdEncoding.DecodeString(originalRequestUrlBase64)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "Internal Server Error")
+		}
+		return c.Redirect(http.StatusFound, string(decodedOriginalRequestUrl))
+	} else {
+		// this is just for robustness, if the state is valid, but does not contain a redirect URL
+		// we just go to the bookmarks page
+		return c.Redirect(http.StatusFound, "/bookmarks")
 	}
 }
 
@@ -165,7 +193,7 @@ type AddBookmarkPage struct {
 
 // TODO: continue here refactoring controller methods into this struct and moving db operations to the repository
 func (controller *Controller) showBookmarks(c echo.Context) error {
-	return withValidSession(c, func(userid int) error {
+	return controller.withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			return c.Render(http.StatusInternalServerError, "bookmarks", nil)
@@ -250,7 +278,7 @@ func (controller *Controller) showBookmarks(c echo.Context) error {
 }
 
 func (controller *Controller) showAddBookmark(c echo.Context) error {
-	return withValidSession(c, func(userid int) error {
+	return controller.withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			return c.Render(http.StatusInternalServerError, "addbookmark", nil)
@@ -272,7 +300,7 @@ func (controller *Controller) showAddBookmark(c echo.Context) error {
 }
 
 func (controller *Controller) deleteBookmark(c echo.Context) error {
-	return withValidSession(c, func(userid int) error {
+	return controller.withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
 			// TODO: add error toast or something based on URL parameter in redirect
@@ -290,7 +318,7 @@ func (controller *Controller) deleteBookmark(c echo.Context) error {
 }
 
 func (controller *Controller) addBookmark(c echo.Context) error {
-	return withValidSession(c, func(userid int) error {
+	return controller.withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println("addBookmark error: ", err)
 			return c.Redirect(http.StatusFound, "/bookmarks")

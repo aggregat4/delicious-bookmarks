@@ -56,15 +56,13 @@ func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBoo
 		bookmarks = append(bookmarks, bookmark)
 	}
 	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
-	// now import all the bookmarks in the database
-	err = store.InitDatabaseWithUser(importBookmarksUsername)
+	err = store.InitAndVerifyDb()
 	if err != nil {
 		panic(err)
 	}
-	// get the user id
-	userId, err := store.FindUserId(importBookmarksUsername)
+	userId, err := store.FindOrCreateUser(importBookmarksUsername)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	// now insert all the bookmarks
 	err = store.SaveBookmarks(userId, bookmarks)

@@ -28,26 +28,32 @@ func (store *Store) InitAndVerifyDb() error {
 	return migrations.MigrateSchema(store.db, bookmarkMigrations)
 }
 
-func (store *Store) InitDatabaseWithUser(initdbUsername string) error {
-	err := store.InitAndVerifyDb()
-	if err != nil {
-		return err
-	}
-
+func (store *Store) FindOrCreateUser(initdbUsername string) (int, error) {
 	rows, err := store.db.Query("SELECT id FROM users WHERE username = ?", initdbUsername)
 	if err != nil {
-		return err
+		return -1, err
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
 		feedId := uuid.New().String()
-		_, err := store.db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
+		result, err := store.db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
 		if err != nil {
-			return err
+			return -1, err
 		}
+		lastInsertId, err := result.LastInsertId()
+		if err != nil {
+			return -1, err
+		}
+		return int(lastInsertId), nil
+	} else {
+		var userid int
+		err = rows.Scan(&userid)
+		if err != nil {
+			return -1, err
+		}
+		return userid, nil
 	}
-	return nil
 }
 
 func (store *Store) GetLastModifiedDate(userid int) (time.Time, error) {
