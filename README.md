@@ -108,3 +108,4 @@ One requirement of the design was that the addbookmark page was easily invokable
 
 - Use If-Modified-Since cache checks on the feed generation
 - Figure out go string encoding through all the various layers
+- Refactor the OIDC authentication to be an Echo middleware
