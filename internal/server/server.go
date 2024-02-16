@@ -96,10 +96,10 @@ func clearSessionCookie(c echo.Context) {
 	})
 }
 
-func setOidcCallbackCookie(c echo.Context, state, originalRequestUrlBase64 string) {
+func setOidcCallbackCookie(c echo.Context, state string) {
 	c.SetCookie(&http.Cookie{
 		Name:     "delicious-bookmarks-oidc-callback",
-		Value:    state + "|" + originalRequestUrlBase64,
+		Value:    state,
 		Path:     "/", // TODO: this path is not context path safe
 		Expires:  time.Now().Add(time.Minute * 5),
 		HttpOnly: true,
@@ -115,7 +115,8 @@ func (controller *Controller) withValidSession(c echo.Context, delegate func(use
 		if err != nil {
 			return c.String(http.StatusInternalServerError, "Internal server error")
 		}
-		setOidcCallbackCookie(c, state, originalRequestUrlBase64)
+		state = state + "|" + originalRequestUrlBase64
+		setOidcCallbackCookie(c, state)
 		return c.Redirect(http.StatusFound, controller.Config.Oauth2Config.AuthCodeURL(state))
 	}
 	if err != nil {
@@ -138,6 +139,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	// check state vs cookie
 	state, err := c.Cookie("delicious-bookmarks-oidc-callback")
 	if err != nil {
+		log.Println(err)
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 	if c.QueryParam("state") != state.Value {
@@ -145,6 +147,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	}
 	oauth2Token, err := controller.Config.Oauth2Config.Exchange(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
+		log.Println(err)
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
@@ -155,6 +158,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	verifier := controller.OidcProvider.Verifier(&controller.Config.OidcConfig)
 	idToken, err := verifier.Verify(c.Request().Context(), rawIDToken)
 	if err != nil {
+		log.Println(err)
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 	// we now have a valid ID token, to progress in the application we need to map this
@@ -162,6 +166,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	username := idToken.Subject
 	userId, err := controller.Store.FindOrCreateUser(username)
 	if err != nil {
+		log.Println("Error retrieving or creating user: ", err)
 		return c.String(http.StatusInternalServerError, "Internal Server Error")
 	}
 	// we have a valid user, we can now create a session and redirect to the original request
@@ -169,6 +174,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	sess.Values["userid"] = userId
 	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
+		log.Println(err)
 		return c.String(http.StatusInternalServerError, "Internal Server Error")
 	}
 	stateParts := strings.Split(state.Value, "|")
@@ -176,6 +182,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 		originalRequestUrlBase64 := stateParts[1]
 		decodedOriginalRequestUrl, err := base64.StdEncoding.DecodeString(originalRequestUrlBase64)
 		if err != nil {
+			log.Println(err)
 			return c.String(http.StatusInternalServerError, "Internal Server Error")
 		}
 		return c.Redirect(http.StatusFound, string(decodedOriginalRequestUrl))
