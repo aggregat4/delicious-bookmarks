@@ -66,13 +66,13 @@ func main() {
 		Oauth2Config:                     oauth2Config,
 		OidcConfig:                       oidcConfig,
 	}
-	// Start the crawler
+	// Start the bookMarkCrawler
 	quitChannel := make(chan struct{})
-	crawler := crawler.Crawler{
+	bookMarkCrawler := crawler.Crawler{
 		Store:  &store,
 		Config: config,
 	}
-	crawler.Run(quitChannel)
+	bookMarkCrawler.Run(quitChannel)
 	// Start the server
 	server.RunServer(server.Controller{
 		Store:        &store,
