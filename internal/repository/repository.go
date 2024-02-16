@@ -37,7 +37,7 @@ func (store *Store) FindOrCreateUser(initdbUsername string) (int, error) {
 
 	if !rows.Next() {
 		feedId := uuid.New().String()
-		result, err := store.db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, ?, -1, ?)", initdbUsername, feedId)
+		result, err := store.db.Exec("INSERT INTO users (username, last_update, feed_id) VALUES (?, -1, ?)", initdbUsername, feedId)
 		if err != nil {
 			return -1, err
 		}
