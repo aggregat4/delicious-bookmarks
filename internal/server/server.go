@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"errors"
+	"github.com/labstack/echo/v4"
 	"html/template"
 	"io"
 	"log"
@@ -22,7 +23,6 @@ import (
 	"github.com/gorilla/feeds"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
-	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
@@ -113,7 +113,7 @@ func (controller *Controller) withValidSession(c echo.Context, delegate func(use
 		clearSessionCookie(c)
 		state, err := crypto.RandString(16)
 		if err != nil {
-			return c.String(http.StatusInternalServerError, "Internal server error")
+			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 		}
 		state = state + "|" + originalRequestUrlBase64
 		setOidcCallbackCookie(c, state)
@@ -140,26 +140,26 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	state, err := c.Cookie("delicious-bookmarks-oidc-callback")
 	if err != nil {
 		log.Println(err)
-		return c.String(http.StatusUnauthorized, "Unauthorized")
+		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 	}
 	if c.QueryParam("state") != state.Value {
-		return c.String(http.StatusUnauthorized, "Unauthorized")
+		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 	}
 	oauth2Token, err := controller.Config.Oauth2Config.Exchange(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
 		log.Println(err)
-		return c.String(http.StatusUnauthorized, "Unauthorized")
+		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 	}
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
-		return c.String(http.StatusUnauthorized, "Unauthorized")
+		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 	}
 	// TODO: maybe initialize this verifier beforehand and reuse it here
 	verifier := controller.OidcProvider.Verifier(&controller.Config.OidcConfig)
 	idToken, err := verifier.Verify(c.Request().Context(), rawIDToken)
 	if err != nil {
 		log.Println(err)
-		return c.String(http.StatusUnauthorized, "Unauthorized")
+		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 	}
 	// we now have a valid ID token, to progress in the application we need to map this
 	// to an existing user or create a new one on demand
@@ -167,7 +167,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	userId, err := controller.Store.FindOrCreateUser(username)
 	if err != nil {
 		log.Println("Error retrieving or creating user: ", err)
-		return c.String(http.StatusInternalServerError, "Internal Server Error")
+		return c.Render(http.StatusInternalServerError, "error-internal", nil)
 	}
 	// we have a valid user, we can now create a session and redirect to the original request
 	sess, _ := session.Get("delicious-bookmarks-session", c)
@@ -175,7 +175,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
 		log.Println(err)
-		return c.String(http.StatusInternalServerError, "Internal Server Error")
+		return c.Render(http.StatusInternalServerError, "error-internal", nil)
 	}
 	stateParts := strings.Split(state.Value, "|")
 	if len(stateParts) > 1 {
@@ -183,7 +183,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 		decodedOriginalRequestUrl, err := base64.StdEncoding.DecodeString(originalRequestUrlBase64)
 		if err != nil {
 			log.Println(err)
-			return c.String(http.StatusInternalServerError, "Internal Server Error")
+			return c.Render(http.StatusInternalServerError, "error-internal", nil)
 		}
 		return c.Redirect(http.StatusFound, string(decodedOriginalRequestUrl))
 	} else {
@@ -203,7 +203,7 @@ func (controller *Controller) showBookmarks(c echo.Context) error {
 	return controller.withValidSession(c, func(userid int) error {
 		handleError := func(err error) error {
 			log.Println(err)
-			return c.Render(http.StatusInternalServerError, "bookmarks", nil)
+			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 		}
 		currentLastModifiedDateTime, err := controller.Store.GetLastModifiedDate(userid)
 		if err != nil {
@@ -355,8 +355,9 @@ func (controller *Controller) showFeed(c echo.Context) error {
 	userId, err := controller.Store.FindUserIdForFeedId(feedId)
 	if err != nil {
 		log.Println(err)
-		// this is not entirely correct, we are returning 404 for all errors but we may also
-		// get a random database error and we do not cleanly distinguish between those and not finding the I
+		// this is not entirely correct, we are returning 404 for all errors, but we may
+		// also get a random database error, and we do not cleanly distinguish between
+		// those and not finding the ID
 		return c.String(http.StatusNotFound, "feed with id "+feedId+" not found")
 	}
 	readLaterBookmarks, err := controller.Store.FindReadLaterBookmarksWithContent(userId, controller.Config.MaxContentDownloadAttempts)
