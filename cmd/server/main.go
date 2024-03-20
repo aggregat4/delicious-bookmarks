@@ -23,8 +23,10 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error loading .env file: %s", err))
 	}
+	var dbFilename = requireStringFromEnv("DELBM_DB_FILENAME")
+
 	var store repository.Store
-	err = store.InitAndVerifyDb()
+	err = store.InitAndVerifyDb(dbFilename)
 	if err != nil {
 		panic(err)
 	}

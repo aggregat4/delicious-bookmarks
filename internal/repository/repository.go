@@ -19,9 +19,9 @@ func (store *Store) Close() {
 	store.db.Close()
 }
 
-func (store *Store) InitAndVerifyDb() error {
+func (store *Store) InitAndVerifyDb(filename string) error {
 	var err error
-	store.db, err = sql.Open("sqlite3", "file:bookmarks.sqlite?_foreign_keys=on")
+	store.db, err = sql.Open("sqlite3", "file:"+filename+"?_foreign_keys=on")
 	if err != nil {
 		return err
 	}

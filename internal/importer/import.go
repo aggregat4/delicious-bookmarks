@@ -30,7 +30,7 @@ func removeHtmlTags(s string) string {
 	return HtmlTagRegex.ReplaceAllString(s, "")
 }
 
-func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBookmarksUsername string) error {
+func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBookmarksUsername, bookmarksDbFilename string) error {
 	file, err := os.Open(importBookmarksJsonFile)
 	if err != nil {
 		return err
@@ -56,10 +56,6 @@ func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBoo
 		bookmarks = append(bookmarks, bookmark)
 	}
 	log.Println("Importing", len(bookmarks), "bookmarks for user", importBookmarksUsername)
-	err = store.InitAndVerifyDb()
-	if err != nil {
-		panic(err)
-	}
 	userId, err := store.FindOrCreateUser(importBookmarksUsername)
 	if err != nil {
 		panic(err)
