@@ -57,8 +57,8 @@ type Configuration struct {
 }
 
 const (
-	DirectionRight int = 0
-	DirectionLeft  int = 1
+	DirectionLeft  int = 0
+	DirectionRight int = 1
 )
 
 type ReadLaterBookmark struct {
