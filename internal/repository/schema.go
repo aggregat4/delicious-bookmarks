@@ -1,6 +1,6 @@
 package repository
 
-import "aggregat4/gobookmarks/pkg/migrations"
+import "github.com/aggregat4/go-baselib/migrations"
 
 var bookmarkMigrations = []migrations.Migration{
 	{SequenceId: 1,

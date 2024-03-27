@@ -1,5 +1,7 @@
 github.com/aggregat4/go-baselib v1.0.0 h1:pwDiKKUPlkDxw4cbODmFHNR0wppHfnQcnIpbooyK8PU=
 github.com/aggregat4/go-baselib v1.0.0/go.mod h1:2Yx65eF8hVEcAxyNrqgyW7SFy3a2jNnx9cWScioqaJ4=
+github.com/aggregat4/go-baselib v1.1.0 h1:VPhd5IJ1c3s2jMEVuQgYdbgM1M80PwFc417arBinMxw=
+github.com/aggregat4/go-baselib v1.1.0/go.mod h1:2Yx65eF8hVEcAxyNrqgyW7SFy3a2jNnx9cWScioqaJ4=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
 github.com/aymerick/douceur v0.2.0 h1:Mv+mAeH1Q+n9Fr+oyamOlAkUNPWPlA8PPGR0QAaYuPk=

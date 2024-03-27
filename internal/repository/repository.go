@@ -2,9 +2,9 @@ package repository
 
 import (
 	"aggregat4/gobookmarks/internal/domain"
-	"aggregat4/gobookmarks/pkg/migrations"
 	"database/sql"
 	"errors"
+	"github.com/aggregat4/go-baselib/migrations"
 	"log"
 	"time"
 
