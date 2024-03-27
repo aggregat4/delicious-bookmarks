@@ -16,8 +16,8 @@ import (
 
 	"aggregat4/gobookmarks/internal/domain"
 	"aggregat4/gobookmarks/internal/repository"
-	"aggregat4/gobookmarks/pkg/crypto"
-	"aggregat4/gobookmarks/pkg/lang"
+	"github.com/aggregat4/go-baselib/crypto"
+	"github.com/aggregat4/go-baselib/lang"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/feeds"
@@ -232,7 +232,7 @@ func (controller *Controller) showBookmarks(c echo.Context) error {
 			offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
 			// ignore error here, we'll just use the default value
 		}
-		var searchQuery string = c.QueryParam("q")
+		var searchQuery = c.QueryParam("q")
 		bookmarks, err := controller.Store.GetBookmarks(searchQuery, direction, userid, offset, controller.Config.BookmarksPageSize)
 		if err != nil {
 			return handleError(err)
