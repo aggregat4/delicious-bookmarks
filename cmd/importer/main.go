@@ -27,7 +27,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error initializing database: %s", err)
 		}
-		err = importer.ImportBookmarks(&store, importBookmarksHtmlFile, importBookmarksUsername, bookmarksDbFilename)
+		err = importer.ImportBookmarks(&store, importBookmarksHtmlFile, importBookmarksUsername)
 		if err != nil {
 			log.Fatalf("Error importing bookmarks: %s", err)
 		}

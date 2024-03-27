@@ -30,7 +30,7 @@ func removeHtmlTags(s string) string {
 	return HtmlTagRegex.ReplaceAllString(s, "")
 }
 
-func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBookmarksUsername, bookmarksDbFilename string) error {
+func ImportBookmarks(store *repository.Store, importBookmarksJsonFile, importBookmarksUsername string) error {
 	file, err := os.Open(importBookmarksJsonFile)
 	if err != nil {
 		return err
