@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/oauth2"
 	"html/template"
 	"io"
 	"log"
@@ -15,8 +16,8 @@ import (
 	"time"
 
 	"aggregat4/gobookmarks/internal/domain"
+	internalmiddleware "aggregat4/gobookmarks/internal/middleware"
 	"aggregat4/gobookmarks/internal/repository"
-	"github.com/aggregat4/go-baselib/crypto"
 	"github.com/aggregat4/go-baselib/lang"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -33,12 +34,11 @@ var viewTemplates embed.FS
 var images embed.FS
 
 type Controller struct {
-	Store        *repository.Store
-	Config       domain.Configuration
-	OidcProvider *oidc.Provider
+	Store  *repository.Store
+	Config domain.Configuration
 }
 
-func RunServer(controller Controller) {
+func RunServer(controller Controller, oidcConfig oauth2.Config, oidcProvider *oidc.Provider) {
 	e := echo.New()
 	// Set server timeouts based on advice from https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#1687428081
 	e.Server.ReadTimeout = time.Duration(controller.Config.ServerReadTimeoutSeconds) * time.Second
@@ -53,7 +53,16 @@ func RunServer(controller Controller) {
 		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
-
+	// Configure all the middleware
+	e.Use(internalmiddleware.CreateOidcMiddleware(func(c echo.Context) bool {
+		userId, err := getUserIdFromSession(c)
+		if err != nil && userId != 0 {
+			return true
+		} else {
+			clearSessionCookie(c)
+			return false
+		}
+	}, oidcConfig))
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
@@ -61,25 +70,41 @@ func RunServer(controller Controller) {
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
 	}))
+	// TODO: replace form based CSRF with origin check
 	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
 		TokenLookup: "form:csrf_token",
 	}))
-
+	// Endpoints
 	// MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
 	imageFS := echo.MustSubFS(images, "public/images")
 	e.StaticFS("/images", imageFS)
-
-	e.GET("/oidccallback", controller.oidcCallback)
-
+	e.GET("/oidccallback", internalmiddleware.CreateOidcCallbackEndpoint(oidcConfig, oidcProvider, controller.oidcDelegate))
 	e.GET("/bookmarks", controller.showBookmarks)
 	e.POST("/bookmarks", controller.addBookmark)
 	e.GET("/addbookmark", controller.showAddBookmark)
 	e.POST("/deletebookmark", controller.deleteBookmark)
 	e.GET("/feeds/:id", controller.showFeed)
-
+	// Start the server
 	port := controller.Config.ServerPort
 	e.Logger.Fatal(e.Start(":" + strconv.Itoa(port)))
 	// NO MORE CODE HERE, IT WILL NOT BE EXECUTED
+}
+
+func handleInternalServerError(c echo.Context, err error) error {
+	log.Println(err)
+	return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
+}
+
+func getUserIdFromSession(c echo.Context) (int, error) {
+	sess, err := session.Get("delicious-bookmarks-session", c)
+	if err != nil {
+		return 0, err
+	}
+	if sess.Values["userid"] != nil {
+		return sess.Values["userid"].(int), nil
+	} else {
+		return 0, errors.New("no userid in session")
+	}
 }
 
 func highlight(text string) string {
@@ -96,71 +121,7 @@ func clearSessionCookie(c echo.Context) {
 	})
 }
 
-func setOidcCallbackCookie(c echo.Context, state string) {
-	c.SetCookie(&http.Cookie{
-		Name:     "delicious-bookmarks-oidc-callback",
-		Value:    state,
-		Path:     "/", // TODO: this path is not context path safe
-		Expires:  time.Now().Add(time.Minute * 5),
-		HttpOnly: true,
-	})
-}
-
-func (controller *Controller) withValidSession(c echo.Context, delegate func(userid int) error) error {
-	sess, err := session.Get("delicious-bookmarks-session", c)
-	originalRequestUrlBase64 := base64.StdEncoding.EncodeToString([]byte(c.Request().URL.String()))
-	handleUnauthenticated := func() error {
-		clearSessionCookie(c)
-		state, err := crypto.RandString(16)
-		if err != nil {
-			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-		}
-		state = state + "|" + originalRequestUrlBase64
-		setOidcCallbackCookie(c, state)
-		return c.Redirect(http.StatusFound, controller.Config.Oauth2Config.AuthCodeURL(state))
-	}
-	if err != nil {
-		return handleUnauthenticated()
-	} else {
-		useridraw := sess.Values["userid"]
-		if useridraw == nil {
-			return handleUnauthenticated()
-		}
-		sessionUserid := useridraw.(int)
-		if sessionUserid == 0 {
-			return handleUnauthenticated()
-		} else {
-			return delegate(sessionUserid)
-		}
-	}
-}
-
-func (controller *Controller) oidcCallback(c echo.Context) error {
-	// check state vs cookie
-	state, err := c.Cookie("delicious-bookmarks-oidc-callback")
-	if err != nil {
-		log.Println(err)
-		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-	}
-	if c.QueryParam("state") != state.Value {
-		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-	}
-	oauth2Token, err := controller.Config.Oauth2Config.Exchange(c.Request().Context(), c.QueryParam("code"))
-	if err != nil {
-		log.Println(err)
-		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-	}
-	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
-	if !ok {
-		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-	}
-	// TODO: maybe initialize this verifier beforehand and reuse it here
-	verifier := controller.OidcProvider.Verifier(&controller.Config.OidcConfig)
-	idToken, err := verifier.Verify(c.Request().Context(), rawIDToken)
-	if err != nil {
-		log.Println(err)
-		return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-	}
+func (controller *Controller) oidcDelegate(c echo.Context, idToken *oidc.IDToken, state string) error {
 	// we now have a valid ID token, to progress in the application we need to map this
 	// to an existing user or create a new one on demand
 	username := idToken.Subject
@@ -177,7 +138,7 @@ func (controller *Controller) oidcCallback(c echo.Context) error {
 		log.Println(err)
 		return c.Render(http.StatusInternalServerError, "error-internal", nil)
 	}
-	stateParts := strings.Split(state.Value, "|")
+	stateParts := strings.Split(state, "|")
 	if len(stateParts) > 1 {
 		originalRequestUrlBase64 := stateParts[1]
 		decodedOriginalRequestUrl, err := base64.StdEncoding.DecodeString(originalRequestUrlBase64)
@@ -200,151 +161,146 @@ type AddBookmarkPage struct {
 
 // TODO: continue here refactoring controller methods into this struct and moving db operations to the repository
 func (controller *Controller) showBookmarks(c echo.Context) error {
-	return controller.withValidSession(c, func(userid int) error {
-		handleError := func(err error) error {
-			log.Println(err)
-			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
-		}
-		currentLastModifiedDateTime, err := controller.Store.GetLastModifiedDate(userid)
+	userid, err := getUserIdFromSession(c)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	currentLastModifiedDateTime, err := controller.Store.GetLastModifiedDate(userid)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	if c.Request().Header.Get("If-Modified-Since") == currentLastModifiedDateTime.Format(http.TimeFormat) {
+		return c.NoContent(http.StatusNotModified)
+	}
+	var direction = domain.DirectionRight
+	if c.QueryParam("direction") != "" {
+		direction, err = strconv.Atoi(c.QueryParam("direction"))
 		if err != nil {
-			return handleError(err)
+			direction = domain.DirectionRight
 		}
-		if c.Request().Header.Get("If-Modified-Since") == currentLastModifiedDateTime.Format(http.TimeFormat) {
-			return c.NoContent(http.StatusNotModified)
+		if direction != 0 && direction != 1 {
+			direction = domain.DirectionRight
 		}
-		var direction = domain.DirectionRight
-		if c.QueryParam("direction") != "" {
-			direction, err = strconv.Atoi(c.QueryParam("direction"))
-			if err != nil {
-				direction = domain.DirectionRight
-			}
-			if direction != 0 && direction != 1 {
-				direction = domain.DirectionRight
-			}
+	}
+	var offset int64
+	if direction == domain.DirectionLeft {
+		offset = 0
+	} else {
+		offset = math.MaxInt64
+	}
+	if c.QueryParam("offset") != "" {
+		offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
+		// ignore error here, we'll just use the default value
+	}
+	var searchQuery = c.QueryParam("q")
+	bookmarks, err := controller.Store.GetBookmarks(searchQuery, direction, userid, offset, controller.Config.BookmarksPageSize)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	moreResultsLeft := len(bookmarks) == (controller.Config.BookmarksPageSize + 1)
+	if moreResultsLeft {
+		bookmarks = bookmarks[:len(bookmarks)-1]
+	}
+	if direction == domain.DirectionLeft {
+		// if we are moving back in the list of bookmarks the query has given us an ascending list of them
+		// we need to reverse them to satisfy the invariant of having a descending list of bookmarks
+		for i, j := 0, len(bookmarks)-1; i < j; i, j = i+1, j-1 {
+			bookmarks[i], bookmarks[j] = bookmarks[j], bookmarks[i]
 		}
-		var offset int64
-		if direction == domain.DirectionLeft {
-			offset = 0
-		} else {
-			offset = math.MaxInt64
-		}
-		if c.QueryParam("offset") != "" {
-			offset, _ = strconv.ParseInt(c.QueryParam("offset"), 10, 64)
-			// ignore error here, we'll just use the default value
-		}
-		var searchQuery = c.QueryParam("q")
-		bookmarks, err := controller.Store.GetBookmarks(searchQuery, direction, userid, offset, controller.Config.BookmarksPageSize)
-		if err != nil {
-			return handleError(err)
-		}
-		moreResultsLeft := len(bookmarks) == (controller.Config.BookmarksPageSize + 1)
-		if moreResultsLeft {
-			bookmarks = bookmarks[:len(bookmarks)-1]
-		}
-		if direction == domain.DirectionLeft {
-			// if we are moving back in the list of bookmarks the query has given us an ascending list of them
-			// we need to reverse them to satisfy the invariant of having a descending list of bookmarks
-			for i, j := 0, len(bookmarks)-1; i < j; i, j = i+1, j-1 {
-				bookmarks[i], bookmarks[j] = bookmarks[j], bookmarks[i]
-			}
-		}
-		var HasLeft = true
-		if /*!(direction == right && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == math.MaxInt64 || (direction == domain.DirectionLeft && !moreResultsLeft) {
-			HasLeft = false
-		}
-		var LeftOffset int64 = 0
-		if len(bookmarks) > 0 {
-			LeftOffset = bookmarks[0].Created.Unix()
-		}
-		var HasRight = true
-		if /* !(direction == left && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == 0 || (direction == domain.DirectionRight && !moreResultsLeft) {
-			HasRight = false
-		}
-		var RightOffset int64 = math.MaxInt64
-		if len(bookmarks) >= controller.Config.BookmarksPageSize {
-			RightOffset = bookmarks[controller.Config.BookmarksPageSize-1].Created.Unix()
-		}
+	}
+	var HasLeft = true
+	if /*!(direction == right && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == math.MaxInt64 || (direction == domain.DirectionLeft && !moreResultsLeft) {
+		HasLeft = false
+	}
+	var LeftOffset int64 = 0
+	if len(bookmarks) > 0 {
+		LeftOffset = bookmarks[0].Created.Unix()
+	}
+	var HasRight = true
+	if /* !(direction == left && offset != 0 && len(bookmarks) == config.BookmarksPageSize) && */ offset == 0 || (direction == domain.DirectionRight && !moreResultsLeft) {
+		HasRight = false
+	}
+	var RightOffset int64 = math.MaxInt64
+	if len(bookmarks) >= controller.Config.BookmarksPageSize {
+		RightOffset = bookmarks[controller.Config.BookmarksPageSize-1].Created.Unix()
+	}
 
-		feedId, err := controller.Store.GetOrCreateFeedIdForUser(userid)
-		if err != nil {
-			return handleError(err)
-		}
+	feedId, err := controller.Store.GetOrCreateFeedIdForUser(userid)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
 
-		c.Response().Header().Set("Cache-Control", "no-cache")
-		c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
-		return c.Render(http.StatusOK, "bookmarks", domain.BookmarkSlice{
-			Bookmarks:   bookmarks,
-			HasLeft:     HasLeft,
-			LeftOffset:  LeftOffset,
-			HasRight:    HasRight,
-			RightOffset: RightOffset,
-			SearchQuery: searchQuery,
-			CsrfToken:   c.Get("csrf").(string),
-			RssFeedUrl:  controller.Config.DeliciousBookmarksBaseUrl + "/feeds/" + feedId})
-	})
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Last-Modified", currentLastModifiedDateTime.Format(http.TimeFormat))
+	return c.Render(http.StatusOK, "bookmarks", domain.BookmarkSlice{
+		Bookmarks:   bookmarks,
+		HasLeft:     HasLeft,
+		LeftOffset:  LeftOffset,
+		HasRight:    HasRight,
+		RightOffset: RightOffset,
+		SearchQuery: searchQuery,
+		CsrfToken:   c.Get("csrf").(string),
+		RssFeedUrl:  controller.Config.DeliciousBookmarksBaseUrl + "/feeds/" + feedId})
 }
 
 func (controller *Controller) showAddBookmark(c echo.Context) error {
-	return controller.withValidSession(c, func(userid int) error {
-		handleError := func(err error) error {
-			log.Println(err)
-			return c.Render(http.StatusInternalServerError, "addbookmark", nil)
-		}
-		url := c.QueryParam("url")
-		title := c.QueryParam("title")
-		description := c.QueryParam("description")
-		if url != "" {
-			existingBookmark, err := controller.Store.FindExistingBookmark(url, userid)
-			if err != nil {
-				return handleError(err)
-			}
-			if existingBookmark != (domain.Bookmark{}) {
-				return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: existingBookmark, CsrfToken: c.Get("csrf").(string)})
-			}
-		}
-		return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: domain.Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
-	})
-}
-
-func (controller *Controller) deleteBookmark(c echo.Context) error {
-	return controller.withValidSession(c, func(userid int) error {
-		handleError := func(err error) error {
-			log.Println(err)
-			// TODO: add error toast or something based on URL parameter in redirect
-			return c.Redirect(http.StatusFound, "/bookmarks")
-		}
-		url := c.FormValue("url")
-		if url != "" {
-			err := controller.Store.DeleteBookmark(url, userid)
-			if err != nil {
-				return handleError(err)
-			}
-		}
-		return c.Redirect(http.StatusFound, "/bookmarks")
-	})
-}
-
-func (controller *Controller) addBookmark(c echo.Context) error {
-	return controller.withValidSession(c, func(userid int) error {
-		handleError := func(err error) error {
-			log.Println("addBookmark error: ", err)
-			return c.Redirect(http.StatusFound, "/bookmarks")
-		}
-		url := c.FormValue("url")
-		if url == "" {
-			return handleError(errors.New("URL is required"))
-		}
-		title := c.FormValue("title")
-		description := c.FormValue("description")
-		tags := c.FormValue("tags")
-		private := c.FormValue("private") == "on"
-		readlater := c.FormValue("readlater") == "on"
-		err := controller.Store.AddOrUpdateBookmark(domain.Bookmark{URL: url, Title: title, Description: description, Tags: tags, Private: private, Readlater: readlater}, userid)
+	handleError := func(err error) error {
+		log.Println(err)
+		return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
+	}
+	userid, err := getUserIdFromSession(c)
+	if err != nil {
+		return handleError(err)
+	}
+	url := c.QueryParam("url")
+	title := c.QueryParam("title")
+	description := c.QueryParam("description")
+	if url != "" {
+		existingBookmark, err := controller.Store.FindExistingBookmark(url, userid)
 		if err != nil {
 			return handleError(err)
 		}
-		return c.Redirect(http.StatusFound, "/bookmarks")
-	})
+		if existingBookmark != (domain.Bookmark{}) {
+			return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: existingBookmark, CsrfToken: c.Get("csrf").(string)})
+		}
+	}
+	return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: domain.Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
+}
+
+func (controller *Controller) deleteBookmark(c echo.Context) error {
+	userid, err := getUserIdFromSession(c)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	url := c.FormValue("url")
+	if url != "" {
+		err := controller.Store.DeleteBookmark(url, userid)
+		if err != nil {
+			return handleInternalServerError(c, err)
+		}
+	}
+	return c.Redirect(http.StatusFound, "/bookmarks")
+}
+
+func (controller *Controller) addBookmark(c echo.Context) error {
+	userid, err := getUserIdFromSession(c)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	url := c.FormValue("url")
+	if url == "" {
+		return c.Render(http.StatusBadRequest, "error-badrequest", "url parameter is required")
+	}
+	title := c.FormValue("title")
+	description := c.FormValue("description")
+	tags := c.FormValue("tags")
+	private := c.FormValue("private") == "on"
+	readlater := c.FormValue("readlater") == "on"
+	err = controller.Store.AddOrUpdateBookmark(domain.Bookmark{URL: url, Title: title, Description: description, Tags: tags, Private: private, Readlater: readlater}, userid)
+	if err != nil {
+		return handleInternalServerError(c, err)
+	}
+	return c.Redirect(http.StatusFound, "/bookmarks")
 }
 
 func (controller *Controller) showFeed(c echo.Context) error {
@@ -362,8 +318,7 @@ func (controller *Controller) showFeed(c echo.Context) error {
 	}
 	readLaterBookmarks, err := controller.Store.FindReadLaterBookmarksWithContent(userId, controller.Config.MaxContentDownloadAttempts)
 	if err != nil {
-		log.Println(err)
-		return c.String(http.StatusInternalServerError, "error retrieving read later bookmarks")
+		return handleInternalServerError(c, err)
 	}
 	feed := &feeds.Feed{
 		Title:       "Delicious Read Later Bookmarks",
@@ -392,7 +347,7 @@ func (controller *Controller) showFeed(c echo.Context) error {
 
 	rss, err := feed.ToRss()
 	if err != nil {
-		log.Fatal(err)
+		return handleInternalServerError(c, err)
 	}
 	c.Response().Header().Set("Content-Type", "application/rss+xml")
 	return c.String(http.StatusOK, rss)
@@ -402,6 +357,6 @@ type Template struct {
 	templates *template.Template
 }
 
-func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+func (t *Template) Render(w io.Writer, name string, data interface{}, _ echo.Context) error {
 	return t.templates.ExecuteTemplate(w, name, data)
 }

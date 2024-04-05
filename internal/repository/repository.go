@@ -199,16 +199,11 @@ func (store *Store) FindExistingBookmarkId(url string, userid int) (int64, error
 }
 
 func (store *Store) DeleteBookmark(url string, userid int) error {
-	id, err := store.FindExistingBookmarkId(url, userid)
-	if err != nil {
-		return err
-	}
-	_, err = store.db.Exec("DELETE FROM bookmarks WHERE id = ?", id)
+	_, err := store.db.Exec("DELETE FROM bookmarks WHERE user_id = ? AND url = ?", userid, url)
 	return err
 }
 
 func (store *Store) AddOrUpdateBookmark(bookmark domain.Bookmark, userid int) error {
-
 	// we perform an upsert because the URL may already be stored and we just want to update the other fields
 	_, err := store.db.Exec(`
 			INSERT INTO bookmarks (user_id, url, title, description, tags, private, readlater, created, updated) 

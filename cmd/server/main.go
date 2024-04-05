@@ -48,9 +48,6 @@ func main() {
 		// },
 		Scopes: []string{oidc.ScopeOpenID},
 	}
-	oidcConfig := oidc.Config{
-		ClientID: requireStringFromEnv("DELBM_OIDC_CLIENT_ID"),
-	}
 	// Get and init config
 	config := domain.Configuration{
 		MaxContentDownloadAttempts:       getIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),
@@ -65,8 +62,6 @@ func main() {
 		ServerWriteTimeoutSeconds:        getIntFromEnv("DELBM_SERVER_WRITE_TIMEOUT_SECONDS", 10),
 		SessionCookieSecretKey:           getStringFromEnv("DELBM_SESSION_COOKIE_SECRET_KEY", uuid.New().String()),
 		ServerPort:                       getIntFromEnv("DELBM_SERVER_PORT", 1323),
-		Oauth2Config:                     oauth2Config,
-		OidcConfig:                       oidcConfig,
 	}
 	// Start the bookMarkCrawler
 	quitChannel := make(chan struct{})
@@ -77,10 +72,9 @@ func main() {
 	bookMarkCrawler.Run(quitChannel)
 	// Start the server
 	server.RunServer(server.Controller{
-		Store:        &store,
-		Config:       config,
-		OidcProvider: oidcProvider,
-	})
+		Store:  &store,
+		Config: config,
+	}, oauth2Config, oidcProvider)
 }
 
 func requireStringFromEnv(s string) string {
