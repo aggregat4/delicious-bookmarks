@@ -2,7 +2,7 @@ module aggregat4/gobookmarks
 
 go 1.22.1
 
-require github.com/aggregat4/go-baselib v1.1.0
+require github.com/aggregat4/go-baselib v1.2.1
 
 //replace github.com/aggregat4/go-baselib => ../go-baselib
 

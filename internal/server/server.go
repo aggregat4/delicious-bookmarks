@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"github.com/labstack/echo/v4"
-	"golang.org/x/oauth2"
 	"html/template"
 	"io"
 	"log"
@@ -16,7 +15,7 @@ import (
 	"time"
 
 	"aggregat4/gobookmarks/internal/domain"
-	internalmiddleware "aggregat4/gobookmarks/internal/middleware"
+	"aggregat4/gobookmarks/internal/oidcmiddleware"
 	"aggregat4/gobookmarks/internal/repository"
 	"github.com/aggregat4/go-baselib/lang"
 
@@ -38,7 +37,7 @@ type Controller struct {
 	Config domain.Configuration
 }
 
-func RunServer(controller Controller, oidcConfig oauth2.Config, oidcProvider *oidc.Provider) {
+func RunServer(controller Controller, oidcMiddleware *oidcmiddleware.OidcMiddleware) {
 	e := echo.New()
 	// Set server timeouts based on advice from https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#1687428081
 	e.Server.ReadTimeout = time.Duration(controller.Config.ServerReadTimeoutSeconds) * time.Second
@@ -53,8 +52,7 @@ func RunServer(controller Controller, oidcConfig oauth2.Config, oidcProvider *oi
 		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
-	// Configure all the middleware
-	e.Use(internalmiddleware.CreateOidcMiddleware(func(c echo.Context) bool {
+	e.Use(oidcMiddleware.CreateOidcMiddleware(func(c echo.Context) bool {
 		userId, err := getUserIdFromSession(c)
 		if err != nil && userId != 0 {
 			return true
@@ -62,7 +60,7 @@ func RunServer(controller Controller, oidcConfig oauth2.Config, oidcProvider *oi
 			clearSessionCookie(c)
 			return false
 		}
-	}, oidcConfig))
+	}))
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
@@ -75,10 +73,9 @@ func RunServer(controller Controller, oidcConfig oauth2.Config, oidcProvider *oi
 		TokenLookup: "form:csrf_token",
 	}))
 	// Endpoints
-	// MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
-	imageFS := echo.MustSubFS(images, "public/images")
+	imageFS := echo.MustSubFS(images, "public/images") // MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
 	e.StaticFS("/images", imageFS)
-	e.GET("/oidccallback", internalmiddleware.CreateOidcCallbackEndpoint(oidcConfig, oidcProvider, controller.oidcDelegate))
+	e.GET("/oidccallback", oidcMiddleware.CreateOidcCallbackEndpoint(controller.oidcDelegate))
 	e.GET("/bookmarks", controller.showBookmarks)
 	e.POST("/bookmarks", controller.addBookmark)
 	e.GET("/addbookmark", controller.showAddBookmark)

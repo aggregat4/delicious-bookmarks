@@ -1,6 +1,7 @@
-package middleware
+package oidcmiddleware
 
 import (
+	"context"
 	"encoding/base64"
 	"github.com/aggregat4/go-baselib/crypto"
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -11,7 +12,38 @@ import (
 	"time"
 )
 
-func CreateOidcMiddleware(isAuthenticated func(c echo.Context) bool, oidcConfig oauth2.Config) echo.MiddlewareFunc {
+type OidcMiddleware struct {
+	IdpServerUrl string
+	ClientId     string
+	ClientSecret string
+	RedirectUrl  string
+	oidcProvider *oidc.Provider
+	oidcConfig   oauth2.Config
+}
+
+func NewOidcMiddleware(idpServerUrl string, clientId string, clientSecret string, redirectUrl string) *OidcMiddleware {
+	ctx := context.Background()
+	createdOidcProvider, err := oidc.NewProvider(ctx, idpServerUrl)
+	if err != nil {
+		panic(err)
+	}
+	return &OidcMiddleware{
+		IdpServerUrl: idpServerUrl,
+		ClientId:     clientId,
+		ClientSecret: clientSecret,
+		RedirectUrl:  redirectUrl,
+		oidcProvider: createdOidcProvider,
+		oidcConfig: oauth2.Config{
+			ClientID:     clientId,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirectUrl,
+			Endpoint:     createdOidcProvider.Endpoint(),
+			Scopes:       []string{oidc.ScopeOpenID},
+		},
+	}
+}
+
+func (oidcMiddleware *OidcMiddleware) CreateOidcMiddleware(isAuthenticated func(c echo.Context) bool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if !isAuthenticated(c) {
@@ -29,7 +61,7 @@ func CreateOidcMiddleware(isAuthenticated func(c echo.Context) bool, oidcConfig 
 					Expires:  time.Now().Add(time.Minute * 5),
 					HttpOnly: true,
 				})
-				return c.Redirect(http.StatusFound, oidcConfig.AuthCodeURL(state))
+				return c.Redirect(http.StatusFound, oidcMiddleware.oidcConfig.AuthCodeURL(state))
 			} else {
 				return next(c)
 			}
@@ -37,8 +69,8 @@ func CreateOidcMiddleware(isAuthenticated func(c echo.Context) bool, oidcConfig 
 	}
 }
 
-func CreateOidcCallbackEndpoint(oidcConfig oauth2.Config, oidcProvider *oidc.Provider, delegate func(c echo.Context, idToken *oidc.IDToken, state string) error) echo.HandlerFunc {
-	verifier := oidcProvider.Verifier(&oidc.Config{ClientID: oidcConfig.ClientID})
+func (oidcMiddleware *OidcMiddleware) CreateOidcCallbackEndpoint(delegate func(c echo.Context, idToken *oidc.IDToken, state string) error) echo.HandlerFunc {
+	verifier := oidcMiddleware.oidcProvider.Verifier(&oidc.Config{ClientID: oidcMiddleware.oidcConfig.ClientID})
 	return func(c echo.Context) error {
 		// check state vs cookie
 		state, err := c.Cookie("oidc-callback-state-cookie")
@@ -49,7 +81,7 @@ func CreateOidcCallbackEndpoint(oidcConfig oauth2.Config, oidcProvider *oidc.Pro
 		if c.QueryParam("state") != state.Value {
 			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
 		}
-		oauth2Token, err := oidcConfig.Exchange(c.Request().Context(), c.QueryParam("code"))
+		oauth2Token, err := oidcMiddleware.oidcConfig.Exchange(c.Request().Context(), c.QueryParam("code"))
 		if err != nil {
 			log.Println(err)
 			return c.Render(http.StatusUnauthorized, "error-unauthorized", nil)
