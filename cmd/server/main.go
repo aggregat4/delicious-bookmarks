@@ -3,13 +3,14 @@ package main
 import (
 	"aggregat4/gobookmarks/internal/crawler"
 	"aggregat4/gobookmarks/internal/domain"
-	"aggregat4/gobookmarks/internal/oidcmiddleware"
 	"aggregat4/gobookmarks/internal/repository"
 	"aggregat4/gobookmarks/internal/server"
 	"fmt"
+	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
 	"github.com/aggregat4/go-baselib/env"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -26,11 +27,14 @@ func main() {
 	}
 	defer store.Close()
 	// Initialize Oidc Middleware
-	oidcMiddleware := oidcmiddleware.NewOidcMiddleware(
+	oidcMiddleware := baseliboidc.NewOidcMiddleware(
 		env.RequireStringFromEnv("DELBM_OIDC_IDP_SERVER"),
 		env.RequireStringFromEnv("DELBM_OIDC_CLIENT_ID"),
 		env.RequireStringFromEnv("DELBM_OIDC_CLIENT_SECRET"),
-		env.RequireStringFromEnv("DELBM_OIDC_REDIRECT_URI"))
+		env.RequireStringFromEnv("DELBM_OIDC_REDIRECT_URI"),
+		func(c echo.Context) bool {
+			return false // we want OIDC to apply to all URLs, skip nothing
+		})
 	// Get and init config
 	config := domain.Configuration{
 		MaxContentDownloadAttempts:       env.GetIntFromEnv("DELBM_MAX_CONTENT_DOWNLOAD_ATTEMPTS", 3),

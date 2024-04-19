@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"aggregat4/gobookmarks/internal/domain"
-	"aggregat4/gobookmarks/internal/oidcmiddleware"
 	"aggregat4/gobookmarks/internal/repository"
+	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
 	"github.com/aggregat4/go-baselib/lang"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -37,7 +37,7 @@ type Controller struct {
 	Config domain.Configuration
 }
 
-func RunServer(controller Controller, oidcMiddleware *oidcmiddleware.OidcMiddleware) {
+func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware) {
 	e := echo.New()
 	// Set server timeouts based on advice from https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#1687428081
 	e.Server.ReadTimeout = time.Duration(controller.Config.ServerReadTimeoutSeconds) * time.Second
