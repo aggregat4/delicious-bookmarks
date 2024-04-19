@@ -2,8 +2,6 @@ package server
 
 import (
 	"embed"
-	"encoding/base64"
-	"errors"
 	"github.com/labstack/echo/v4"
 	"html/template"
 	"io"
@@ -19,7 +17,6 @@ import (
 	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
 	"github.com/aggregat4/go-baselib/lang"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/feeds"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
@@ -52,15 +49,7 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
-	e.Use(oidcMiddleware.CreateOidcMiddleware(func(c echo.Context) bool {
-		userId, err := getUserIdFromSession(c)
-		if err != nil && userId != 0 {
-			return true
-		} else {
-			clearSessionCookie(c)
-			return false
-		}
-	}))
+	e.Use(oidcMiddleware.CreateOidcMiddleware(baseliboidc.IsAuthenticated))
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
@@ -75,7 +64,10 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 	// Endpoints
 	imageFS := echo.MustSubFS(images, "public/images") // MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
 	e.StaticFS("/images", imageFS)
-	e.GET("/oidccallback", oidcMiddleware.CreateOidcCallbackEndpoint(controller.oidcDelegate))
+	e.GET("/oidccallback", oidcMiddleware.CreateOidcCallbackEndpoint(baseliboidc.CreateSessionBasedOidcDelegate(
+		func(username string) (int, error) {
+			return controller.Store.FindOrCreateUser(username)
+		}, "/bookmarks")))
 	e.GET("/bookmarks", controller.showBookmarks)
 	e.POST("/bookmarks", controller.addBookmark)
 	e.GET("/addbookmark", controller.showAddBookmark)
@@ -92,63 +84,8 @@ func handleInternalServerError(c echo.Context, err error) error {
 	return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
 }
 
-func getUserIdFromSession(c echo.Context) (int, error) {
-	sess, err := session.Get("delicious-bookmarks-session", c)
-	if err != nil {
-		return 0, err
-	}
-	if sess.Values["userid"] != nil {
-		return sess.Values["userid"].(int), nil
-	} else {
-		return 0, errors.New("no userid in session")
-	}
-}
-
 func highlight(text string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(text, "{{mark}}", "<mark>"), "{{endmark}}", "</mark>")
-}
-
-func clearSessionCookie(c echo.Context) {
-	c.SetCookie(&http.Cookie{
-		Name:     "delicious-bookmarks-session",
-		Value:    "",
-		Path:     "/", // TODO: this path is not context path safe
-		Expires:  time.Unix(0, 0),
-		HttpOnly: true,
-	})
-}
-
-func (controller *Controller) oidcDelegate(c echo.Context, idToken *oidc.IDToken, state string) error {
-	// we now have a valid ID token, to progress in the application we need to map this
-	// to an existing user or create a new one on demand
-	username := idToken.Subject
-	userId, err := controller.Store.FindOrCreateUser(username)
-	if err != nil {
-		log.Println("Error retrieving or creating user: ", err)
-		return c.Render(http.StatusInternalServerError, "error-internal", nil)
-	}
-	// we have a valid user, we can now create a session and redirect to the original request
-	sess, _ := session.Get("delicious-bookmarks-session", c)
-	sess.Values["userid"] = userId
-	err = sess.Save(c.Request(), c.Response())
-	if err != nil {
-		log.Println(err)
-		return c.Render(http.StatusInternalServerError, "error-internal", nil)
-	}
-	stateParts := strings.Split(state, "|")
-	if len(stateParts) > 1 {
-		originalRequestUrlBase64 := stateParts[1]
-		decodedOriginalRequestUrl, err := base64.StdEncoding.DecodeString(originalRequestUrlBase64)
-		if err != nil {
-			log.Println(err)
-			return c.Render(http.StatusInternalServerError, "error-internal", nil)
-		}
-		return c.Redirect(http.StatusFound, string(decodedOriginalRequestUrl))
-	} else {
-		// this is just for robustness, if the state is valid, but does not contain a redirect URL
-		// we just go to the bookmarks page
-		return c.Redirect(http.StatusFound, "/bookmarks")
-	}
 }
 
 type AddBookmarkPage struct {
@@ -158,7 +95,7 @@ type AddBookmarkPage struct {
 
 // TODO: continue here refactoring controller methods into this struct and moving db operations to the repository
 func (controller *Controller) showBookmarks(c echo.Context) error {
-	userid, err := getUserIdFromSession(c)
+	userid, err := baseliboidc.GetUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}
@@ -245,7 +182,7 @@ func (controller *Controller) showAddBookmark(c echo.Context) error {
 		log.Println(err)
 		return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
 	}
-	userid, err := getUserIdFromSession(c)
+	userid, err := baseliboidc.GetUserIdFromSession(c)
 	if err != nil {
 		return handleError(err)
 	}
@@ -265,7 +202,7 @@ func (controller *Controller) showAddBookmark(c echo.Context) error {
 }
 
 func (controller *Controller) deleteBookmark(c echo.Context) error {
-	userid, err := getUserIdFromSession(c)
+	userid, err := baseliboidc.GetUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}
@@ -280,7 +217,7 @@ func (controller *Controller) deleteBookmark(c echo.Context) error {
 }
 
 func (controller *Controller) addBookmark(c echo.Context) error {
-	userid, err := getUserIdFromSession(c)
+	userid, err := baseliboidc.GetUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}

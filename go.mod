@@ -6,17 +6,17 @@ go 1.22.1
 
 require (
 	github.com/aggregat4/go-baselib v1.2.1
-	github.com/aggregat4/go-baselib-services v1.0.0
-	github.com/coreos/go-oidc/v3 v3.10.0
+	github.com/aggregat4/go-baselib-services v1.1.0
 	github.com/gorilla/feeds v1.1.2
 	github.com/gorilla/sessions v1.2.2
 	github.com/joho/godotenv v1.5.1
-	github.com/labstack/echo-contrib v0.16.0
+	github.com/labstack/echo-contrib v0.17.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mattn/go-sqlite3 v1.14.22
 )
 
 require (
+	github.com/coreos/go-oidc/v3 v3.10.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
