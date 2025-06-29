@@ -2,7 +2,6 @@ package server
 
 import (
 	"embed"
-	"github.com/labstack/echo/v4"
 	"html/template"
 	"io"
 	"log"
@@ -12,8 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v4"
+
 	"aggregat4/gobookmarks/internal/domain"
 	"aggregat4/gobookmarks/internal/repository"
+
 	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
 	"github.com/aggregat4/go-baselib/lang"
 
@@ -68,6 +70,9 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		func(username string) (int, error) {
 			return controller.Store.FindOrCreateUser(username)
 		}, "/bookmarks")))
+	e.GET("/", func(c echo.Context) error {
+		return c.Redirect(http.StatusFound, "/bookmarks")
+	})
 	e.GET("/bookmarks", controller.showBookmarks)
 	e.POST("/bookmarks", controller.addBookmark)
 	e.GET("/addbookmark", controller.showAddBookmark)
