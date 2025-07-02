@@ -96,6 +96,11 @@
         display: flex;
         column-gap: 12px;
       }
+      .bookmark-url {
+        color: #777;
+        font-size: 0.9em;
+        margin-top: 2px;
+      }
     </style>  
     <link rel="alternate" type="application/rss+xml" title="RSS Feed for your delicious bookmarks (PRIVATE LINK)"  href="{{.RssFeedUrl}}" />
   </head>
@@ -134,6 +139,7 @@
         <div class="bm{{if .Private}} private{{end}}">
           <dt>
             <a href="{{.URL}}">{{if .Title}}{{highlight .Title}}{{end}}{{if not .Title}}{{.URL}}{{end}}</a>
+            <div class="bookmark-url">{{.URL}}</div>
           </dt>
           <dd>
             {{if .Description}}
