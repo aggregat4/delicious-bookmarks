@@ -1,9 +1,8 @@
 ---
 description: Cursor rules for HTML view templates
-globs: **/*.html , **/*.css
+globs: **/*.html 
 alwaysApply: false
 ---
-
 - write semantic concise HTML
 - never use inline styles
 - use custom properties to extract design tokens from CSS and make it easier to change and reuse
