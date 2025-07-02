@@ -4,11 +4,13 @@ import (
 	"aggregat4/gobookmarks/internal/domain"
 	"database/sql"
 	"errors"
-	"github.com/aggregat4/go-baselib/migrations"
 	"log"
 	"time"
 
+	"github.com/aggregat4/go-baselib/migrations"
+
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Store struct {

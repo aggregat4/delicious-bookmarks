@@ -24,7 +24,7 @@ All queries use bound variables to prevent SQL injection attacks.
 
 All pages are generated using go templates and all database strings are automatically escaped for the corresponding context they are used. This prevents Cross Site Scripting (XSS) attacks.
 
-All forms include randomly generated tokens that are verified on the server to prevent Cross-Site Request Forgery (XSRF/CSRF) attacks.
+CSRF vulnerabilities are avoided by doing same origin checks on relevant methods.
 
 It is a good idea to operate the service behind a reverse proxy so you can layer concerns like HTTPS and rate limiting on top of it.
 

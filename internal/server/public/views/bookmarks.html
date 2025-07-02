@@ -149,7 +149,6 @@
               <button class="canceldeletebookmark" onclick="hideDeleteOptions(this)">Cancel</button>
               <form class="deletebookmark" method="post" action="deletebookmark">
                 <input type="hidden" name="url" value="{{.URL}}">
-                <input type="hidden" name="csrf_token" value="{{$.CsrfToken}}">
                 <button class="deletebookmark">Delete!</button>
               </form>
             </span>

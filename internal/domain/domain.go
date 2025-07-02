@@ -11,7 +11,6 @@ type BookmarkSlice struct {
 	HasRight    bool
 	RightOffset int64
 	SearchQuery string
-	CsrfToken   string
 	RssFeedUrl  string
 }
 

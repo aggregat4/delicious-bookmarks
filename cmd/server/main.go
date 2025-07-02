@@ -6,7 +6,8 @@ import (
 	"aggregat4/gobookmarks/internal/repository"
 	"aggregat4/gobookmarks/internal/server"
 	"fmt"
-	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
+
+	baseliboidc "github.com/aggregat4/go-baselib-services/v3/oidc"
 	"github.com/aggregat4/go-baselib/env"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"

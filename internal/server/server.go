@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/labstack/echo/v4"
 
 	"aggregat4/gobookmarks/internal/domain"
 	"aggregat4/gobookmarks/internal/repository"
 
-	baseliboidc "github.com/aggregat4/go-baselib-services/oidc"
+	baselibmiddleware "github.com/aggregat4/go-baselib-services/v3/middleware"
+	baseliboidc "github.com/aggregat4/go-baselib-services/v3/oidc"
 	"github.com/aggregat4/go-baselib/lang"
 
 	"github.com/gorilla/feeds"
@@ -36,6 +38,14 @@ type Controller struct {
 	Config domain.Configuration
 }
 
+func getUserIdFromSession(c echo.Context) (int, error) {
+	session, err := session.Get("user_session", c)
+	if err != nil {
+		return -1, err
+	}
+	return session.Values["user_id"].(int), nil
+}
+
 func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware) {
 	e := echo.New()
 	// Set server timeouts based on advice from https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/#1687428081
@@ -51,7 +61,17 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
-	e.Use(oidcMiddleware.CreateOidcMiddleware(baseliboidc.IsAuthenticated))
+	e.Use(oidcMiddleware.CreateOidcMiddleware(
+		func(c echo.Context) bool {
+			session, err := session.Get("user_session", c)
+			if err != nil {
+				log.Printf("Error getting session in auth middleware: %v", err)
+				return false
+			}
+			return session.Values["user_id"] != nil
+
+		},
+	))
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
@@ -59,17 +79,29 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
 	}))
-	// TODO: replace form based CSRF with origin check
-	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
-		TokenLookup: "form:csrf_token",
+	e.Use(baselibmiddleware.CreateCsrfMiddlewareWithSkipper(func(c echo.Context) bool {
+		return false
 	}))
 	// Endpoints
 	imageFS := echo.MustSubFS(images, "public/images") // MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
 	e.StaticFS("/images", imageFS)
 	e.GET("/oidccallback", oidcMiddleware.CreateOidcCallbackEndpoint(baseliboidc.CreateSessionBasedOidcDelegate(
-		func(username string) (int, error) {
-			return controller.Store.FindOrCreateUser(username)
-		}, "/bookmarks")))
+		func(c echo.Context, idToken *oidc.IDToken) error {
+			session, err := session.Get("user_session", c)
+			if err != nil {
+				log.Printf("Error getting session in auth middleware: %v", err)
+				return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
+			}
+			userId, err := controller.Store.FindOrCreateUser(idToken.Subject)
+			if err != nil {
+				log.Printf("Error finding or creating user in auth middleware: %v", err)
+				return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
+			}
+			session.Values["user_id"] = userId
+			session.Save(c.Request(), c.Response())
+			return c.Redirect(http.StatusFound, "/bookmarks")
+		},
+		"/bookmarks")))
 	e.GET("/", func(c echo.Context) error {
 		return c.Redirect(http.StatusFound, "/bookmarks")
 	})
@@ -94,13 +126,12 @@ func highlight(text string) string {
 }
 
 type AddBookmarkPage struct {
-	Bookmark  domain.Bookmark
-	CsrfToken string
+	Bookmark domain.Bookmark
 }
 
 // TODO: continue here refactoring controller methods into this struct and moving db operations to the repository
 func (controller *Controller) showBookmarks(c echo.Context) error {
-	userid, err := baseliboidc.GetUserIdFromSession(c)
+	userid, err := getUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}
@@ -178,7 +209,6 @@ func (controller *Controller) showBookmarks(c echo.Context) error {
 		HasRight:    HasRight,
 		RightOffset: RightOffset,
 		SearchQuery: searchQuery,
-		CsrfToken:   c.Get("csrf").(string),
 		RssFeedUrl:  controller.Config.DeliciousBookmarksBaseUrl + "/feeds/" + feedId})
 }
 
@@ -187,7 +217,7 @@ func (controller *Controller) showAddBookmark(c echo.Context) error {
 		log.Println(err)
 		return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
 	}
-	userid, err := baseliboidc.GetUserIdFromSession(c)
+	userid, err := getUserIdFromSession(c)
 	if err != nil {
 		return handleError(err)
 	}
@@ -200,14 +230,14 @@ func (controller *Controller) showAddBookmark(c echo.Context) error {
 			return handleError(err)
 		}
 		if existingBookmark != (domain.Bookmark{}) {
-			return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: existingBookmark, CsrfToken: c.Get("csrf").(string)})
+			return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: existingBookmark})
 		}
 	}
-	return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: domain.Bookmark{URL: url, Title: title, Description: description}, CsrfToken: c.Get("csrf").(string)})
+	return c.Render(http.StatusOK, "addbookmark", AddBookmarkPage{Bookmark: domain.Bookmark{URL: url, Title: title, Description: description}})
 }
 
 func (controller *Controller) deleteBookmark(c echo.Context) error {
-	userid, err := baseliboidc.GetUserIdFromSession(c)
+	userid, err := getUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}
@@ -222,7 +252,7 @@ func (controller *Controller) deleteBookmark(c echo.Context) error {
 }
 
 func (controller *Controller) addBookmark(c echo.Context) error {
-	userid, err := baseliboidc.GetUserIdFromSession(c)
+	userid, err := getUserIdFromSession(c)
 	if err != nil {
 		return handleInternalServerError(c, err)
 	}
