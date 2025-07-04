@@ -3,7 +3,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bookmarks</title>
     <link rel="icon" href="/images/delicious.png">
@@ -45,7 +44,7 @@
       .bm.private {
         background-color: rgb(223, 223, 223);
       }
-      blockquote {
+      div.description {
         max-width: 80ch;
         margin: 6px 30px;
         font-style: italic;
@@ -55,7 +54,7 @@
       dl {
         margin: 0;
       }
-      dt {
+      dt a{
         font-weight: bold;         
       }
       dd {
@@ -65,7 +64,7 @@
         margin: 0;
       }
       dd time {
-        color: #777;
+        color: #757575;
       }
       a[aria-disabled=true] {
         color: #8d8d8d;
@@ -97,7 +96,7 @@
         column-gap: 12px;
       }
       .bookmark-url {
-        color: #777;
+        color: #757575;
         font-size: 0.9em;
         margin-top: 2px;
       }
@@ -124,7 +123,7 @@
         <form action="/bookmarks" method="get">
           <label for="search" class="visually-hidden">Search:</label>
           <input type="search" id="search" name="q" value="{{.SearchQuery}}">
-          <button>Search</button>
+          <button type="submit">Search</button>
         </form>
         <div>
           <a href="{{.RssFeedUrl}}">RSS Feed</a>
@@ -143,7 +142,7 @@
           </dt>
           <dd>
             {{if .Description}}
-            <blockquote>{{highlight .Description}}</blockquote>
+            <div class="description">{{highlight .Description}}</div>
             {{end}}
             {{if .Tags}}
             <p>Tags: <span class="tags">{{highlight .Tags}}</span></p>
