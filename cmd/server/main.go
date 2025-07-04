@@ -34,7 +34,7 @@ func main() {
 		env.RequireStringFromEnv("DELBM_OIDC_CLIENT_SECRET"),
 		env.RequireStringFromEnv("DELBM_OIDC_REDIRECT_URI"),
 		func(c echo.Context) bool {
-			return false // we want OIDC to apply to all URLs, skip nothing
+			return c.Request().URL.Path == "/oidccallback"
 		})
 	// Get and init config
 	config := domain.Configuration{

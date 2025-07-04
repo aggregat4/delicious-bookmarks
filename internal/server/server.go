@@ -79,7 +79,6 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 				return false
 			}
 			return session.Values["user_id"] != nil
-
 		},
 	))
 	// Endpoints
