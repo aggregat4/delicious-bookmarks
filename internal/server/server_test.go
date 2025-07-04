@@ -210,7 +210,7 @@ func TestIntegration_BookmarksPage(t *testing.T) {
 	assert.Contains(t, body, "https://example.com/article1")
 	assert.Contains(t, body, "https://example.com/article2")
 	assert.Contains(t, body, "https://example.com/article3")
-	assert.Contains(t, body, `<div class="bookmark-url">https://example.com/article1</div>`)
+	assert.Contains(t, body, `<div class="bookmark-url" title="https://example.com/article1">https://example.com/article1</div>`)
 }
 
 func TestIntegration_BookmarksPageWithSearch(t *testing.T) {
