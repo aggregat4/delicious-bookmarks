@@ -61,6 +61,16 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		templates: template.Must(template.New("").Funcs(funcMap).ParseFS(viewTemplates, "public/views/*.html")),
 	}
 	e.Renderer = t
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
+	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5,
+	}))
+	e.Use(baselibmiddleware.CreateCsrfMiddlewareWithSkipper(func(c echo.Context) bool {
+		return false
+	}))
 	e.Use(oidcMiddleware.CreateOidcMiddleware(
 		func(c echo.Context) bool {
 			session, err := session.Get("user_session", c)
@@ -72,16 +82,6 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 
 		},
 	))
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	sessionCookieSecretKey := controller.Config.SessionCookieSecretKey
-	e.Use(session.Middleware(sessions.NewCookieStore([]byte(sessionCookieSecretKey))))
-	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Level: 5,
-	}))
-	e.Use(baselibmiddleware.CreateCsrfMiddlewareWithSkipper(func(c echo.Context) bool {
-		return false
-	}))
 	// Endpoints
 	imageFS := echo.MustSubFS(images, "public/images") // MustSubFS basically strips the prefix from the path that is automatically added by Go's embedFS
 	e.StaticFS("/images", imageFS)
