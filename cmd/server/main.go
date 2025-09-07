@@ -34,7 +34,14 @@ func main() {
 		env.RequireStringFromEnv("DELBM_OIDC_CLIENT_SECRET"),
 		env.RequireStringFromEnv("DELBM_OIDC_REDIRECT_URI"),
 		func(c echo.Context) bool {
-			return c.Request().URL.Path == "/oidccallback"
+			path := c.Request().URL.Path
+			if path == "/oidccallback" {
+				return true
+			}
+			if c.Request().Method == "GET" && len(path) >= 7 && path[:7] == "/feeds/" {
+				return true
+			}
+			return false
 		})
 	// Get and init config
 	config := domain.Configuration{
