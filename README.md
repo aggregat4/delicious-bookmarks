@@ -87,9 +87,3 @@ Pages are cached with a revalidate strategy that is based on the time of the las
 Full text search is implemented using the sqlite fts5 extension. A build script is included for local and docker based builds to make sure the extension is activated.
 
 One requirement of the design was that the `/addbookmark` page should be easily invokable from a bookmarklet or a browser extension as a shortcut for adding new URLs.
-
-## TODO
-
-- Use If-Modified-Since cache checks on the feed generation
-- Figure out go string encoding through all the various layers
-- Refactor the OIDC authentication to be an Echo middleware
