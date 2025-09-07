@@ -75,7 +75,16 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		func(c echo.Context) bool {
 			session, err := session.Get("user_session", c)
 			if err != nil {
-				log.Printf("Error getting session in auth middleware: %v", err)
+				log.Printf("Error getting session in auth middleware (likely invalid cookie): %v", err)
+				// Clear invalid session cookie
+				http.SetCookie(c.Response(), &http.Cookie{
+					Name:     "user_session",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+					Secure:   false, // Set to true in production with HTTPS
+				})
 				return false
 			}
 			return session.Values["user_id"] != nil
@@ -88,8 +97,20 @@ func RunServer(controller Controller, oidcMiddleware *baseliboidc.OidcMiddleware
 		func(c echo.Context, idToken *oidc.IDToken) error {
 			session, err := session.Get("user_session", c)
 			if err != nil {
-				log.Printf("Error getting session in auth middleware: %v", err)
-				return c.Render(http.StatusInternalServerError, "error-internalserver", nil)
+				log.Printf("Error getting session in OIDC callback, likely due to invalid cookie (e.g., after server restart with new secret): %v", err)
+				// Clear any invalid session cookie and create a new session
+				// First, clear the invalid cookie by setting it to expire
+				http.SetCookie(c.Response(), &http.Cookie{
+					Name:     "user_session",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+					Secure:   false, // Set to true in production with HTTPS
+				})
+				// Create a new session
+				store := sessions.NewCookieStore([]byte(controller.Config.SessionCookieSecretKey))
+				session = sessions.NewSession(store, "user_session")
 			}
 			userId, err := controller.Store.FindOrCreateUser(idToken.Subject)
 			if err != nil {
